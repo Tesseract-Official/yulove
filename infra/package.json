@@ -1,0 +1,15 @@
+{
+  "name": "@yulove/infra",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.273.0",
+    "constructs": "^10.8.1"
+  }
+}

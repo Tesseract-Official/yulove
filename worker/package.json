@@ -1,0 +1,14 @@
+{
+  "name": "@yulove/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node --check src/index.js",
+    "typecheck": "echo 'worker is plain JavaScript: no type check'",
+    "test": "vitest run"
+  }
+}

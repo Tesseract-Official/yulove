@@ -1,0 +1,7 @@
+packages:
+  - infra
+  - packages/*
+  - services/*
+  - worker
+  - web
+  - scripts
