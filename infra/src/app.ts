@@ -1,5 +1,6 @@
 import { App } from 'aws-cdk-lib';
 import { readConfig, REGION } from './config.js';
+import { registerRoutes } from './routes.js';
 import { ApiStack } from './stacks/api-stack.js';
 import { AuthStack } from './stacks/auth-stack.js';
 import { DataStack } from './stacks/data-stack.js';
@@ -20,7 +21,7 @@ const auth = new AuthStack(app, 'DsaJudgeAuth', {
 
 const queues = new QueueStack(app, 'DsaJudgeQueues', { env });
 
-new ApiStack(app, 'DsaJudgeApi', {
+const api = new ApiStack(app, 'DsaJudgeApi', {
   env,
   webOrigins,
   userPool: auth.userPool,
@@ -29,3 +30,5 @@ new ApiStack(app, 'DsaJudgeApi', {
   queues: queues.queues,
   bucket: data.bucket,
 });
+
+registerRoutes(api, { collegeDomain });

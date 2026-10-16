@@ -1,5 +1,6 @@
 import { putAuditItem } from './db/audit-log.js';
 import { examStudentKey } from './types.js';
+import { normaliseEmail } from './identity.js';
 
 const MAX_COLLISION_RETRIES = 5;
 
@@ -32,7 +33,7 @@ export async function writeAudit(
     const written = await putAuditItem({
       entityKey,
       timestamp,
-      actor: actor.toLowerCase(),
+      actor: normaliseEmail(actor),
       action,
       before,
       after,

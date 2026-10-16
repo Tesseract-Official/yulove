@@ -1,6 +1,6 @@
 import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { ROLES } from '@yulove/shared';
+import { normaliseEmail as normaliseIdentity, ROLES } from '@yulove/shared';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -12,7 +12,7 @@ export type SeedResult = 'created' | 'already-seeded';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normaliseEmail(raw: string): string {
-  const email = raw.trim().toLowerCase();
+  const email = normaliseIdentity(raw);
   if (!EMAIL_PATTERN.test(email)) {
     throw new Error(`"${raw}" is not a valid email address.`);
   }

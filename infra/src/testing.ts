@@ -1,6 +1,7 @@
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { readConfig } from './config.js';
+import { registerRoutes } from './routes.js';
 import { ApiStack } from './stacks/api-stack.js';
 import { AuthStack } from './stacks/auth-stack.js';
 import { DataStack } from './stacks/data-stack.js';
@@ -12,7 +13,10 @@ export const TEST_CONTEXT = {
 };
 
 /** Builds all four stacks the way app.ts does, without running esbuild. */
-export function buildApp(context: Record<string, string> = TEST_CONTEXT) {
+export function buildApp(
+  context: Record<string, string> = TEST_CONTEXT,
+  options: { routes?: boolean } = {},
+) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
   const { collegeDomain, webOrigins } = readConfig(app.node);
   const env = { account: '123456789012', region: 'ap-south-1' };
@@ -34,6 +38,8 @@ export function buildApp(context: Record<string, string> = TEST_CONTEXT) {
     queues: queues.queues,
     bucket: data.bucket,
   });
+
+  if (options.routes) registerRoutes(api, { collegeDomain });
 
   return {
     app,

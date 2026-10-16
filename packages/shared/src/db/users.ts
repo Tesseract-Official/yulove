@@ -1,13 +1,23 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from '../errors.js';
+import { normaliseEmail, normaliseRollNo } from '../identity.js';
 import type { UserItem } from '../types.js';
 import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
 
 const table = () => tableName('Users');
 
+/** The stored form of a user: lower-case email, upper-case roll number. */
+function normaliseUser(user: UserItem): UserItem {
+  return {
+    ...user,
+    email: normaliseEmail(user.email),
+    ...(user.rollNo === undefined ? {} : { rollNo: normaliseRollNo(user.rollNo) }),
+  };
+}
+
 export async function getUser(email: string): Promise<UserItem | undefined> {
   const out = await docClient().send(
-    new GetCommand({ TableName: table(), Key: { email: email.toLowerCase() } }),
+    new GetCommand({ TableName: table(), Key: { email: normaliseEmail(email) } }),
   );
   return out.Item as UserItem | undefined;
 }
@@ -18,7 +28,7 @@ export async function createUser(user: UserItem): Promise<void> {
     await docClient().send(
       new PutCommand({
         TableName: table(),
-        Item: { ...user, email: user.email.toLowerCase() },
+        Item: normaliseUser(user),
         ConditionExpression: 'attribute_not_exists(email)',
       }),
     );
@@ -30,9 +40,7 @@ export async function createUser(user: UserItem): Promise<void> {
 
 /** Writes a user, replacing any existing item (used by the CSV import to update rows). */
 export async function putUser(user: UserItem): Promise<void> {
-  await docClient().send(
-    new PutCommand({ TableName: table(), Item: { ...user, email: user.email.toLowerCase() } }),
-  );
+  await docClient().send(new PutCommand({ TableName: table(), Item: normaliseUser(user) }));
 }
 
 export type UserUpdate = Partial<
@@ -41,12 +49,15 @@ export type UserUpdate = Partial<
 
 /** Updates fields of an existing user. Returns false when the user does not exist. */
 export async function updateUser(email: string, changes: UserUpdate): Promise<boolean> {
-  const set = buildSet(changes);
+  const set = buildSet({
+    ...changes,
+    ...(changes.rollNo === undefined ? {} : { rollNo: normaliseRollNo(changes.rollNo) }),
+  });
   try {
     await docClient().send(
       new UpdateCommand({
         TableName: table(),
-        Key: { email: email.toLowerCase() },
+        Key: { email: normaliseEmail(email) },
         UpdateExpression: set.expression,
         ConditionExpression: 'attribute_exists(email)',
         ExpressionAttributeNames: set.names,
@@ -76,7 +87,7 @@ export async function getUserByRoll(rollNo: string): Promise<UserItem | undefine
     TableName: table(),
     IndexName: 'byRoll',
     KeyConditionExpression: 'rollNo = :rollNo',
-    ExpressionAttributeValues: { ':rollNo': rollNo },
+    ExpressionAttributeValues: { ':rollNo': normaliseRollNo(rollNo) },
   });
   return first;
 }

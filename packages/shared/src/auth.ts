@@ -1,6 +1,7 @@
 import type { Role } from './enums.js';
 import { getUser } from './db/users.js';
 import { ForbiddenError, UnauthorizedError } from './errors.js';
+import { normaliseEmail } from './identity.js';
 import type { UserItem } from './types.js';
 
 /** The part of an API Gateway HTTP API event (JWT authorizer) that auth reads. */
@@ -35,7 +36,7 @@ function emailClaim(event: AuthEvent): string {
   if (typeof claim !== 'string' || claim.trim() === '') {
     throw new UnauthorizedError('Token has no email claim');
   }
-  return claim.trim().toLowerCase();
+  return normaliseEmail(claim);
 }
 
 /**

@@ -11,7 +11,8 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1152.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
-    "@yulove/shared": "workspace:^"
+    "@yulove/shared": "workspace:^",
+    "csv-parse": "^7.0.3"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",

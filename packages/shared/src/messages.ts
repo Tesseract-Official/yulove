@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { COMPARE_MODES, FAIL_REASONS, LANGUAGES, VERDICTS } from './enums.js';
+import { normaliseEmail } from './identity.js';
 
 const nonEmpty = z.string().min(1);
 const attempt = z.number().int().positive();
@@ -119,7 +120,7 @@ function fifoId(parts: Array<string | number>): string {
 
 /** MessageGroupId = exam + student, so one student's answers are processed in order. */
 export function messageGroupId(examId: string, studentEmail: string): string {
-  return fifoId([examId, studentEmail.toLowerCase()]);
+  return fifoId([examId, normaliseEmail(studentEmail)]);
 }
 
 /** MessageDeduplicationId = exam + student + question + attempt. */
@@ -129,7 +130,7 @@ export function messageDeduplicationId(
   questionNumber: number,
   attempt: number,
 ): string {
-  return fifoId([examId, studentEmail.toLowerCase(), questionNumber, attempt]);
+  return fifoId([examId, normaliseEmail(studentEmail), questionNumber, attempt]);
 }
 
 /** Question-setup messages are not answer-specific; they group by question. */

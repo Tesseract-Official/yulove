@@ -37,7 +37,14 @@ import {
   listQuestionsByTeacher,
   updateQuestion,
 } from './questions.js';
-import { createUser, getUser, getUserByRoll, listUsersByBatch, updateUser } from './users.js';
+import {
+  createUser,
+  getUser,
+  getUserByRoll,
+  listUsersByBatch,
+  putUser,
+  updateUser,
+} from './users.js';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const conditionFailed = () =>
@@ -97,6 +104,47 @@ describe('Users', () => {
       Item: { email: 'teach@college.edu' },
     });
     await expect(createUser(user)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('stores the email in lower case and the roll number in upper case', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    const student: UserItem = {
+      email: 'Student@College.EDU',
+      role: 'STUDENT',
+      name: 'S',
+      active: true,
+      rollNo: ' 22cs101 ',
+      batchId: 'A',
+    };
+
+    await createUser(student);
+    await putUser(student);
+
+    for (const input of sent(PutCommand)) {
+      expect(input['Item']).toMatchObject({ email: 'student@college.edu', rollNo: '22CS101' });
+    }
+  });
+
+  it('upper-cases a changed roll number on update', async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+
+    await updateUser('Student@College.edu', { rollNo: ' 22cs101 ', name: 'S' });
+
+    expect(sent(UpdateCommand)[0]).toMatchObject({
+      Key: { email: 'student@college.edu' },
+      ExpressionAttributeValues: { ':rollNo': '22CS101', ':name': 'S' },
+    });
+  });
+
+  it('looks a roll number up case-insensitively', async () => {
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+    await getUserByRoll(' 22cs101 ');
+
+    expect(sent(QueryCommand)[0]).toMatchObject({
+      IndexName: 'byRoll',
+      ExpressionAttributeValues: { ':rollNo': '22CS101' },
+    });
   });
 
   it('updates only an existing user', async () => {
@@ -177,9 +225,9 @@ describe('Questions', () => {
 
   it('creates a version conditionally', async () => {
     ddbMock.on(PutCommand).rejects(conditionFailed());
-    await expect(createQuestion({ questionId: 'q1', version: 1 } as never)).rejects.toBeInstanceOf(
-      ConflictError,
-    );
+    await expect(
+      createQuestion({ questionId: 'q1', version: 1, teacherEmail: 'T@College.edu' } as never),
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it('updates an existing version and lists by teacher', async () => {

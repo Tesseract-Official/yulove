@@ -3,6 +3,7 @@ import type { AppealStatus } from '../enums.js';
 import { ConflictError } from '../errors.js';
 import type { AppealItem } from '../types.js';
 import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
+import { normaliseEmail } from '../identity.js';
 
 const table = () => tableName('Appeals');
 
@@ -17,7 +18,7 @@ export async function createAppeal(appeal: AppealItem): Promise<void> {
     await docClient().send(
       new PutCommand({
         TableName: table(),
-        Item: { ...appeal, studentEmail: appeal.studentEmail.toLowerCase() },
+        Item: { ...appeal, studentEmail: normaliseEmail(appeal.studentEmail) },
         ConditionExpression: 'attribute_not_exists(appealId)',
       }),
     );
@@ -47,7 +48,7 @@ export async function findOpenAppeal(
   studentEmail: string,
   questionNumber: number,
 ): Promise<AppealItem | undefined> {
-  const email = studentEmail.toLowerCase();
+  const email = normaliseEmail(studentEmail);
   const open = await listAppealsByExam(examId, 'OPEN');
   return open.find((a) => a.studentEmail === email && a.questionNumber === questionNumber);
 }
@@ -56,7 +57,10 @@ export type AppealUpdate = Partial<Pick<AppealItem, 'status' | 'handledBy' | 'no
 
 /** Updates an existing appeal. Returns false when it does not exist. */
 export async function updateAppeal(appealId: string, changes: AppealUpdate): Promise<boolean> {
-  const set = buildSet(changes);
+  const set = buildSet({
+    ...changes,
+    ...(changes.handledBy === undefined ? {} : { handledBy: normaliseEmail(changes.handledBy) }),
+  });
   try {
     await docClient().send(
       new UpdateCommand({

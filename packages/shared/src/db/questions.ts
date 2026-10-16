@@ -2,6 +2,7 @@ import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/li
 import { ConflictError } from '../errors.js';
 import type { QuestionItem } from '../types.js';
 import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
+import { normaliseEmail } from '../identity.js';
 
 const table = () => tableName('Questions');
 
@@ -35,7 +36,7 @@ export async function createQuestion(question: QuestionItem): Promise<void> {
     await docClient().send(
       new PutCommand({
         TableName: table(),
-        Item: question,
+        Item: { ...question, teacherEmail: normaliseEmail(question.teacherEmail) },
         ConditionExpression: 'attribute_not_exists(questionId)',
       }),
     );
@@ -80,6 +81,6 @@ export function listQuestionsByTeacher(teacherEmail: string): Promise<QuestionIt
     TableName: table(),
     IndexName: 'byTeacher',
     KeyConditionExpression: 'teacherEmail = :teacherEmail',
-    ExpressionAttributeValues: { ':teacherEmail': teacherEmail.toLowerCase() },
+    ExpressionAttributeValues: { ':teacherEmail': normaliseEmail(teacherEmail) },
   });
 }

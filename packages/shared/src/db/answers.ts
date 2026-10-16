@@ -1,5 +1,6 @@
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { AnswerStatus, FailReason, Language } from '../enums.js';
+import { normaliseEmail } from '../identity.js';
 import { examStudentKey, type AnswerItem, type Override, type TestVerdict } from '../types.js';
 import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
 
@@ -163,7 +164,7 @@ export async function setOverride(key: AnswerKey, override: Override): Promise<v
       UpdateExpression: 'SET #override = :override',
       ConditionExpression: 'attribute_exists(examStudent)',
       ExpressionAttributeNames: { '#override': 'override' },
-      ExpressionAttributeValues: { ':override': override },
+      ExpressionAttributeValues: { ':override': { ...override, by: normaliseEmail(override.by) } },
     }),
   );
 }

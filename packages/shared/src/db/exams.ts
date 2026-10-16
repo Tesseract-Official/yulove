@@ -1,5 +1,6 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from '../errors.js';
+import { normaliseEmail } from '../identity.js';
 import type { ExamItem } from '../types.js';
 import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
 
@@ -30,7 +31,12 @@ export type ExamUpdate = Partial<Omit<ExamItem, 'examId'>>;
 
 /** Updates an existing exam. Returns false when it does not exist. */
 export async function updateExam(examId: string, changes: ExamUpdate): Promise<boolean> {
-  const set = buildSet(changes);
+  const set = buildSet({
+    ...changes,
+    ...(changes.publishedBy === undefined
+      ? {}
+      : { publishedBy: normaliseEmail(changes.publishedBy) }),
+  });
   try {
     await docClient().send(
       new UpdateCommand({

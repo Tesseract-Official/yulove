@@ -22,6 +22,14 @@ export interface RoutePermissions {
   bucket?: Access;
 }
 
+/** Extras for a single route's Lambda. */
+export interface RouteOptions {
+  /** Plain (non-secret) environment variables, e.g. COLLEGE_DOMAIN. */
+  environment?: Record<string, string>;
+  timeout?: Duration;
+  memorySize?: number;
+}
+
 export interface ApiStackProps extends StackProps {
   webOrigins: string[];
   userPool: UserPool;
@@ -72,9 +80,10 @@ export class ApiStack extends Stack {
     path: string,
     handlerEntry: string,
     permissions: RoutePermissions = {},
+    options: RouteOptions = {},
   ): NodejsFunction {
     const id = `${method}${path}`.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const environment: Record<string, string> = {};
+    const environment: Record<string, string> = { ...options.environment };
     const grants: Array<(fn: NodejsFunction) => void> = [];
 
     for (const [name, access] of Object.entries(permissions.tables ?? {}) as [
@@ -107,7 +116,13 @@ export class ApiStack extends Stack {
       });
     }
 
-    const fn = createNodeFunction(this, `${id}-fn`, { entry: handlerEntry, environment });
+    const fn = createNodeFunction(this, `${id}-fn`, {
+      entry: handlerEntry,
+      environment,
+      description: `${method} ${path}`,
+      ...(options.timeout ? { timeout: options.timeout } : {}),
+      ...(options.memorySize ? { memorySize: options.memorySize } : {}),
+    });
     for (const grant of grants) grant(fn);
 
     this.httpApi.addRoutes({

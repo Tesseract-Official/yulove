@@ -9,6 +9,7 @@ import type {
   Role,
   Verdict,
 } from './enums.js';
+import { normaliseEmail } from './identity.js';
 
 /** Users: key `email` (lower case). Indexes byBatch (batchId), byRoll (rollNo). */
 export interface UserItem {
@@ -169,5 +170,5 @@ export interface AuditLogItem {
 }
 
 export function examStudentKey(examId: string, studentEmail: string): string {
-  return `${examId}#${studentEmail.toLowerCase()}`;
+  return `${examId}#${normaliseEmail(studentEmail)}`;
 }

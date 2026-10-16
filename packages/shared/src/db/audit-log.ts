@@ -1,6 +1,7 @@
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import type { AuditLogItem } from '../types.js';
 import { docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
+import { normaliseEmail } from '../identity.js';
 
 const table = () => tableName('AuditLog');
 
@@ -39,6 +40,6 @@ export function listAuditByActor(actor: string): Promise<AuditLogItem[]> {
     TableName: table(),
     IndexName: 'byActor',
     KeyConditionExpression: 'actor = :actor',
-    ExpressionAttributeValues: { ':actor': actor.toLowerCase() },
+    ExpressionAttributeValues: { ':actor': normaliseEmail(actor) },
   });
 }

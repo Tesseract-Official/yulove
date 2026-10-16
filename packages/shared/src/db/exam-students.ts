@@ -1,6 +1,7 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { ExamStudentItem } from '../types.js';
 import { docClient, queryAll, tableName } from './client.js';
+import { normaliseEmail } from '../identity.js';
 
 const table = () => tableName('ExamStudents');
 
@@ -11,7 +12,7 @@ export async function getExamStudent(
   const out = await docClient().send(
     new GetCommand({
       TableName: table(),
-      Key: { examId, studentEmail: studentEmail.toLowerCase() },
+      Key: { examId, studentEmail: normaliseEmail(studentEmail) },
     }),
   );
   return out.Item as ExamStudentItem | undefined;
@@ -21,7 +22,7 @@ export async function putExamStudent(item: ExamStudentItem): Promise<void> {
   await docClient().send(
     new PutCommand({
       TableName: table(),
-      Item: { ...item, studentEmail: item.studentEmail.toLowerCase() },
+      Item: { ...item, studentEmail: normaliseEmail(item.studentEmail) },
     }),
   );
 }
@@ -35,7 +36,7 @@ export async function setAbsent(
   await docClient().send(
     new UpdateCommand({
       TableName: table(),
-      Key: { examId, studentEmail: studentEmail.toLowerCase() },
+      Key: { examId, studentEmail: normaliseEmail(studentEmail) },
       UpdateExpression: 'SET absent = :absent',
       ExpressionAttributeValues: { ':absent': absent },
     }),
@@ -52,7 +53,7 @@ export async function setTotals(
   await docClient().send(
     new UpdateCommand({
       TableName: table(),
-      Key: { examId, studentEmail: studentEmail.toLowerCase() },
+      Key: { examId, studentEmail: normaliseEmail(studentEmail) },
       UpdateExpression:
         'SET totalScore = :totalScore, maxScore = :maxScore, absent = if_not_exists(absent, :no)',
       ExpressionAttributeValues: { ':totalScore': totalScore, ':maxScore': maxScore, ':no': false },
@@ -75,6 +76,6 @@ export function listExamsForStudent(studentEmail: string): Promise<ExamStudentIt
     TableName: table(),
     IndexName: 'byStudent',
     KeyConditionExpression: 'studentEmail = :studentEmail',
-    ExpressionAttributeValues: { ':studentEmail': studentEmail.toLowerCase() },
+    ExpressionAttributeValues: { ':studentEmail': normaliseEmail(studentEmail) },
   });
 }

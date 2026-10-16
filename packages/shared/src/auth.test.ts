@@ -186,6 +186,18 @@ describe('requireUser: identity', () => {
     );
   });
 
+  it('finds a user stored in lower case from a mixed-case JWT email', async () => {
+    const stored = userWith('STUDENT', { email: 'student@college.edu', batchId: 'B1' });
+    // Only an exact-key lookup of the lower-case email finds the user.
+    ddbMock.on(GetCommand).callsFake((input: { Key: { email: string } }) => ({
+      Item: input.Key.email === stored.email ? stored : undefined,
+    }));
+
+    const ctx = await requireUser(eventFor('Student@College.edu'), ['STUDENT']);
+
+    expect(ctx.user.email).toBe('student@college.edu');
+  });
+
   it('looks the user up by lower-cased email', async () => {
     stubUser(userWith('STUDENT', { batchId: 'B1' }));
     await requireUser(eventFor('  Person@College.EDU '), ROLES);
