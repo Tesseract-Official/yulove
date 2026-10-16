@@ -1,0 +1,9 @@
+{
+  "app": "tsx src/app.ts",
+  "output": "cdk.out",
+  "context": {
+    "@aws-cdk/core:defaultCrossStackReferences": "strong",
+    "collegeDomain": "<COLLEGE_DOMAIN>",
+    "webOrigin": "http://localhost:5173"
+  }
+}
