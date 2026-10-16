@@ -87,6 +87,10 @@ Test cases are made once per question and approved by the teacher before any exa
 5. **Teacher creates the exam:** picks a batch, picks approved questions in order, and sets marks per question.
 6. **Generate the PDF:** a Lambda renders title, batch, date, each question with its number, marks, statement, constraints, examples, the function signature to use, and the allowed languages. Saved to S3; the teacher downloads it to print or project.
 
+Input/output convention: every test input is one JSON object keyed by the signature's parameter names, and every program (reference or student driver) prints its result as one line of JSON.
+
+The worker compares parsed JSON values, so formatting differences between languages (spacing, 2 vs 2.0) never fail a test.
+
 Question test status: `GENERATING` → `NEEDS_REVIEW` → `APPROVED` (or `GENERATION_FAILED`, which the teacher retries).
 
 Once an exam using a question has any graded answers, that question's test cases are frozen; edits create a new question version.

@@ -1,7 +1,6 @@
-import { ROLES, type BatchItem } from '@yulove/shared';
+import { ROLES, type BatchItem, mapLimit } from '@yulove/shared';
 import { batchesDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, type ApiEvent, type ApiResult } from '../lib/http.js';
-import { mapLimit } from '../lib/concurrency.js';
 
 /** GET /me: the current user, their role and their batches. Every role may call it. */
 export async function handle(event: ApiEvent): Promise<ApiResult> {

@@ -84,6 +84,7 @@ describe('executeMsg', () => {
       attempt: 1,
       referenceKey: 'questions/q1/v1/reference.py',
       generatorKey: 'questions/q1/v1/generator.py',
+      testsKey: 'questions/q1/v1/tests.json',
       smallInputs: ['1', '2'],
       largeInputCount: 3,
       ...limits,

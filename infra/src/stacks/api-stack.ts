@@ -4,12 +4,14 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { UserPool, UserPoolClient } from 'aws-cdk-lib/aws-cognito';
 import type { Table } from 'aws-cdk-lib/aws-dynamodb';
+import type { IFunction } from 'aws-cdk-lib/aws-lambda';
 import type { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import type { Queue } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
-import { BUCKET_ENV, QUEUE_ENV, TABLE_ENV } from '@yulove/shared';
+import { BUCKET_ENV, FUNCTION_ENV, QUEUE_ENV, TABLE_ENV, type FunctionName } from '@yulove/shared';
 import { createNodeFunction } from '../lib/node-function.js';
+import { grantObjects } from '../lib/s3-grants.js';
 import type { TableName } from './data-stack.js';
 import type { QueueName } from './queue-stack.js';
 
@@ -20,6 +22,10 @@ export interface RoutePermissions {
   tables?: Partial<Record<TableName, Access>>;
   queues?: Partial<Record<QueueName, 'send'>>;
   bucket?: Access;
+  /** Limits `bucket` to keys matching this pattern, e.g. 'questions/*'. Default: the whole bucket. */
+  bucketPrefix?: string;
+  /** Lambdas the route may invoke. Sets the function's name as an environment variable. */
+  lambdas?: Partial<Record<FunctionName, 'invoke'>>;
 }
 
 /** Extras for a single route's Lambda. */
@@ -37,6 +43,7 @@ export interface ApiStackProps extends StackProps {
   tables: Record<TableName, Table>;
   queues: Record<QueueName, Queue>;
   bucket: Bucket;
+  functions: Record<FunctionName, IFunction>;
 }
 
 export class ApiStack extends Stack {
@@ -110,10 +117,19 @@ export class ApiStack extends Stack {
       const access = permissions.bucket;
       environment[BUCKET_ENV] = bucket.bucketName;
       grants.push((fn) => {
-        if (access === 'read') bucket.grantRead(fn);
+        const pattern = permissions.bucketPrefix;
+        if (pattern) {
+          grantObjects(fn, bucket, access, pattern, { listBucket: access !== 'write' });
+        } else if (access === 'read') bucket.grantRead(fn);
         else if (access === 'write') bucket.grantWrite(fn);
         else bucket.grantReadWrite(fn);
       });
+    }
+
+    for (const name of Object.keys(permissions.lambdas ?? {}) as FunctionName[]) {
+      const target = this.props.functions[name];
+      environment[FUNCTION_ENV[name]] = target.functionName;
+      grants.push((fn) => target.grantInvoke(fn));
     }
 
     const fn = createNodeFunction(this, `${id}-fn`, {

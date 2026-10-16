@@ -34,3 +34,14 @@ export const QUEUE_ENV: Record<QueueName, string> = {
 };
 
 export const BUCKET_ENV = 'BUCKET_NAME';
+
+/** Env var that addRoute sets to the test-generation Lambda's name. */
+export const TESTGEN_FUNCTION_ENV = 'TESTGEN_FUNCTION_NAME';
+
+/** Names of the Lambdas a route may be allowed to invoke. */
+export const FUNCTION_NAMES = ['testGeneration'] as const;
+export type FunctionName = (typeof FUNCTION_NAMES)[number];
+
+export const FUNCTION_ENV: Record<FunctionName, string> = {
+  testGeneration: TESTGEN_FUNCTION_ENV,
+};

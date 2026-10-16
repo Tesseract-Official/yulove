@@ -7,6 +7,8 @@ export interface AppConfig {
   collegeDomain: string;
   /** Browser origins allowed to call the API and the bucket, no trailing slash. */
   webOrigins: string[];
+  /** Gemini model used for test generation, e.g. a Pro-tier model with structured output. */
+  geminiModel: string;
 }
 
 function requiredContext(node: Node, key: string): string {
@@ -36,5 +38,7 @@ export function readConfig(node: Node): AppConfig {
     throw new Error('webOrigin must contain at least one origin.');
   }
 
-  return { collegeDomain, webOrigins };
+  const geminiModel = requiredContext(node, 'geminiModel');
+
+  return { collegeDomain, webOrigins, geminiModel };
 }

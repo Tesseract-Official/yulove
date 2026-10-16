@@ -5,11 +5,13 @@ import { registerRoutes } from './routes.js';
 import { ApiStack } from './stacks/api-stack.js';
 import { AuthStack } from './stacks/auth-stack.js';
 import { DataStack } from './stacks/data-stack.js';
+import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
 
 export const TEST_CONTEXT = {
   collegeDomain: 'college.edu',
   webOrigin: 'https://app.college.edu',
+  geminiModel: 'gemini-test-model',
 };
 
 /** Builds all four stacks the way app.ts does, without running esbuild. */
@@ -18,7 +20,7 @@ export function buildApp(
   options: { routes?: boolean } = {},
 ) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
-  const { collegeDomain, webOrigins } = readConfig(app.node);
+  const { collegeDomain, webOrigins, geminiModel } = readConfig(app.node);
   const env = { account: '123456789012', region: 'ap-south-1' };
 
   const data = new DataStack(app, 'Data', { env, webOrigins });
@@ -29,6 +31,14 @@ export function buildApp(
     usersTable: data.tables.Users,
   });
   const queues = new QueueStack(app, 'Queues', { env });
+  const pipeline = new PipelineStack(app, 'Pipeline', {
+    env,
+    geminiModel,
+    questionsTable: data.tables.Questions,
+    bucket: data.bucket,
+    executeQueue: queues.queues.execute,
+    geminiApiKeySecret: data.geminiApiKeySecret,
+  });
   const api = new ApiStack(app, 'Api', {
     env,
     webOrigins,
@@ -37,6 +47,7 @@ export function buildApp(
     tables: data.tables,
     queues: queues.queues,
     bucket: data.bucket,
+    functions: { testGeneration: pipeline.testGenerationFunction },
   });
 
   if (options.routes) registerRoutes(api, { collegeDomain });
@@ -46,6 +57,7 @@ export function buildApp(
     data,
     auth,
     queues,
+    pipeline,
     api,
     // Lazy: synthesising freezes a stack, so routes must be added before the first access.
     templates: {
@@ -57,6 +69,9 @@ export function buildApp(
       },
       get queues() {
         return Template.fromStack(queues);
+      },
+      get pipeline() {
+        return Template.fromStack(pipeline);
       },
       get api() {
         return Template.fromStack(api);

@@ -1,4 +1,4 @@
-import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { AnswerStatus, FailReason, Language } from '../enums.js';
 import { normaliseEmail } from '../identity.js';
 import { examStudentKey, type AnswerItem, type Override, type TestVerdict } from '../types.js';
@@ -31,6 +31,19 @@ export function listAnswersForStudent(examId: string, studentEmail: string): Pro
     KeyConditionExpression: 'examStudent = :examStudent',
     ExpressionAttributeValues: { ':examStudent': examStudentKey(examId, studentEmail) },
   });
+}
+
+/** True when the student has at least one answer (any status) in the exam. */
+export async function hasAnyAnswer(examId: string, studentEmail: string): Promise<boolean> {
+  const out = await docClient().send(
+    new QueryCommand({
+      TableName: table(),
+      KeyConditionExpression: 'examStudent = :examStudent',
+      ExpressionAttributeValues: { ':examStudent': examStudentKey(examId, studentEmail) },
+      Limit: 1,
+    }),
+  );
+  return (out.Items?.length ?? 0) > 0;
 }
 
 /**

@@ -13,6 +13,8 @@ interface RouteDef {
   needsCollegeDomain?: boolean;
 }
 
+const QUESTIONS_ONLY = 'questions/*';
+
 export const ROUTES: readonly RouteDef[] = [
   {
     method: HttpMethod.GET,
@@ -51,6 +53,46 @@ export const ROUTES: readonly RouteDef[] = [
     path: '/batches/{batchId}/students',
     handler: 'list-students',
     permissions: { tables: { Users: 'read', Batches: 'read' } },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/questions',
+    handler: 'create-question',
+    permissions: { tables: { Users: 'read', Questions: 'write' } },
+  },
+  {
+    // Reads Exams and Answers to find out whether the version is already in use.
+    method: HttpMethod.PUT,
+    path: '/questions/{id}',
+    handler: 'update-question',
+    permissions: {
+      tables: { Users: 'read', Questions: 'readWrite', Exams: 'read', Answers: 'read' },
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/questions/{id}/generate-tests',
+    handler: 'start-test-generation',
+    permissions: {
+      tables: { Users: 'read', Questions: 'readWrite', Exams: 'read', Answers: 'read' },
+      lambdas: { testGeneration: 'invoke' },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/questions/{id}/tests',
+    handler: 'get-question-tests',
+    permissions: {
+      tables: { Users: 'read', Questions: 'read' },
+      bucket: 'read',
+      bucketPrefix: QUESTIONS_ONLY,
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/questions/{id}/approve',
+    handler: 'approve-question',
+    permissions: { tables: { Users: 'read', Questions: 'readWrite' } },
   },
 ];
 

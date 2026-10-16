@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from '../errors.js';
 import { normaliseEmail } from '../identity.js';
 import type { ExamItem } from '../types.js';
@@ -63,4 +63,23 @@ export function listExamsByBatch(batchId: string): Promise<ExamItem[]> {
     KeyConditionExpression: 'batchId = :batchId',
     ExpressionAttributeValues: { ':batchId': batchId },
   });
+}
+
+/** Exams whose question list includes this exact question version. */
+export async function listExamsUsingQuestion(
+  questionId: string,
+  version: number,
+): Promise<ExamItem[]> {
+  const items: ExamItem[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await docClient().send(
+      new ScanCommand({ TableName: table(), ExclusiveStartKey: startKey }),
+    );
+    items.push(...((page.Items ?? []) as ExamItem[]));
+    startKey = page.LastEvaluatedKey;
+  } while (startKey);
+  return items.filter((exam) =>
+    exam.questions.some((q) => q.questionId === questionId && q.version === version),
+  );
 }

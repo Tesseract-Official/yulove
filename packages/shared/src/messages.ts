@@ -40,6 +40,11 @@ export const executeMsg = z.discriminatedUnion('type', [
     version,
     language: z.enum(LANGUAGES),
     correctedCode: nonEmpty,
+    /**
+     * Follows the same convention as the reference: reads one test input (a JSON object keyed by
+     * parameter name) from stdin, calls the student's function, prints the result as one line of
+     * JSON. The worker compares parsed JSON values, not text.
+     */
     driverCode: nonEmpty,
     testsKey: nonEmpty,
     ...limits,
@@ -50,10 +55,22 @@ export const executeMsg = z.discriminatedUnion('type', [
     version,
     /** Generation round: increments each time failed inputs are regenerated. */
     attempt,
+    /**
+     * Python 3.12 scripts in S3, following the input/output convention (see IO_CONVENTION):
+     * reference.py reads one test input (a JSON object keyed by the signature's parameter names)
+     * from stdin, calls the solution with those arguments, and prints the result as one line of
+     * JSON (json.dumps). generator.py is run once per large input as `python3 generator.py <i>`
+     * for i in 0..largeInputCount-1 and prints that input as one line of JSON.
+     * The worker records each expected output as that JSON text and later compares parsed
+     * values, so 2 and 2.0 or different spacing never matter.
+     */
     referenceKey: nonEmpty,
     generatorKey: nonEmpty,
+    /** The 7 small inputs, each one JSON object (as text) keyed by the signature's parameter names. */
     smallInputs: z.array(z.string()),
     largeInputCount: z.number().int().nonnegative(),
+    /** Where the worker writes the finished tests.json. */
+    testsKey: nonEmpty,
     ...limits,
   }),
 ]);
@@ -100,7 +117,10 @@ export const resultMsg = z.union([
     version,
     attempt,
     outcome: z.literal('REFERENCE_FAILED'),
-    /** Inputs on which the reference solution crashed or timed out; Gemini regenerates them. */
+    /**
+     * Inputs on which the reference solution crashed or timed out; Gemini regenerates them.
+     * Positions 0-6 are the small inputs, 7-9 the large ones.
+     */
     failedInputIndexes: z.array(z.number().int().nonnegative()),
     reason: z.string(),
   }),

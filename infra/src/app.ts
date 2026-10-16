@@ -4,10 +4,11 @@ import { registerRoutes } from './routes.js';
 import { ApiStack } from './stacks/api-stack.js';
 import { AuthStack } from './stacks/auth-stack.js';
 import { DataStack } from './stacks/data-stack.js';
+import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
 
 const app = new App();
-const { collegeDomain, webOrigins } = readConfig(app.node);
+const { collegeDomain, webOrigins, geminiModel } = readConfig(app.node);
 const env = { account: process.env['CDK_DEFAULT_ACCOUNT'], region: REGION };
 
 const data = new DataStack(app, 'DsaJudgeData', { env, webOrigins });
@@ -21,6 +22,15 @@ const auth = new AuthStack(app, 'DsaJudgeAuth', {
 
 const queues = new QueueStack(app, 'DsaJudgeQueues', { env });
 
+const pipeline = new PipelineStack(app, 'DsaJudgePipeline', {
+  env,
+  geminiModel,
+  questionsTable: data.tables.Questions,
+  bucket: data.bucket,
+  executeQueue: queues.queues.execute,
+  geminiApiKeySecret: data.geminiApiKeySecret,
+});
+
 const api = new ApiStack(app, 'DsaJudgeApi', {
   env,
   webOrigins,
@@ -29,6 +39,7 @@ const api = new ApiStack(app, 'DsaJudgeApi', {
   tables: data.tables,
   queues: queues.queues,
   bucket: data.bucket,
+  functions: { testGeneration: pipeline.testGenerationFunction },
 });
 
 registerRoutes(api, { collegeDomain });

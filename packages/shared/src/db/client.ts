@@ -65,3 +65,42 @@ export function buildSet(values: Record<string, unknown>) {
     values: attrValues,
   };
 }
+
+export interface UpdateParts {
+  set?: Record<string, unknown>;
+  add?: Record<string, number>;
+  remove?: readonly string[];
+}
+
+/**
+ * Builds an UpdateExpression with SET, ADD and REMOVE clauses. Keys with undefined values in
+ * `set` are skipped. Attribute names are aliased so reserved words are safe.
+ */
+export function buildUpdate({ set = {}, add = {}, remove = [] }: UpdateParts) {
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = {};
+  const setParts: string[] = [];
+  const addParts: string[] = [];
+
+  for (const [key, value] of Object.entries(set)) {
+    if (value === undefined) continue;
+    names[`#${key}`] = key;
+    values[`:${key}`] = value;
+    setParts.push(`#${key} = :${key}`);
+  }
+  for (const [key, value] of Object.entries(add)) {
+    names[`#${key}`] = key;
+    values[`:${key}`] = value;
+    addParts.push(`#${key} :${key}`);
+  }
+  for (const key of remove) names[`#${key}`] = key;
+
+  const clauses = [
+    setParts.length > 0 ? `SET ${setParts.join(', ')}` : '',
+    addParts.length > 0 ? `ADD ${addParts.join(', ')}` : '',
+    remove.length > 0 ? `REMOVE ${remove.map((k) => `#${k}`).join(', ')}` : '',
+  ].filter(Boolean);
+  if (clauses.length === 0) throw new Error('No values to update');
+
+  return { expression: clauses.join(' '), names, values };
+}

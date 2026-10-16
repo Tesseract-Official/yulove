@@ -6,10 +6,10 @@ import {
   normaliseEmail,
   normaliseRollNo,
   type UserItem,
+  mapLimit,
 } from '@yulove/shared';
 import { batchesDb, requireUser, usersDb, type AuthContext } from '@yulove/shared/server';
 import { collegeEmailProblem, requireCollegeDomain } from '../lib/college-email.js';
-import { mapLimit } from '../lib/concurrency.js';
 import { FIELD_LABEL, parseStudentCsv, type StudentCsvRow } from '../lib/csv.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 

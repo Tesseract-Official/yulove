@@ -4,6 +4,7 @@
   "context": {
     "@aws-cdk/core:defaultCrossStackReferences": "strong",
     "collegeDomain": "<COLLEGE_DOMAIN>",
-    "webOrigin": "http://localhost:5173"
+    "webOrigin": "http://localhost:5173",
+    "geminiModel": "<GEMINI_MODEL>"
   }
 }

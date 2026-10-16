@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { FakeDb } from '../test-utils/fake-db.js';
+import { FakeDb } from '@yulove/shared/testing';
 import { deniedRoles, invoke, makeEvent, userOf } from '../test-utils/events.js';
 import { handler } from './import-students.js';
 

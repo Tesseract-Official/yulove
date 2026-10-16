@@ -64,9 +64,16 @@ export interface QuestionItem {
   timeLimitMs: number;
   memoryMb: number;
   compareMode: CompareMode;
-  testStatus: QuestionTestStatus;
+  /** Absent until tests have been generated for this version. */
+  testStatus?: QuestionTestStatus;
   testCount?: number;
   testsKey?: string;
+  /** Generation round: incremented each time tests are (re)generated or invalidated. */
+  testAttempt?: number;
+  /** How many times inputs have been replaced since the last full generation. */
+  testRegenerations?: number;
+  /** Why the last generation failed, shown to the teacher. */
+  testFailure?: string;
 }
 
 export interface ExamQuestionRef {

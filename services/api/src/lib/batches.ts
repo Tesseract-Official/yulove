@@ -1,6 +1,5 @@
-import { ValidationError } from '@yulove/shared';
+import { ValidationError, mapLimit } from '@yulove/shared';
 import { batchesDb } from '@yulove/shared/server';
-import { mapLimit } from './concurrency.js';
 
 /** Throws ValidationError (422) listing every id that is not an existing batch. */
 export async function assertBatchesExist(batchIds: readonly string[]): Promise<void> {
