@@ -28,7 +28,7 @@ Four roles, each checked on every API call; a user's role comes from the `Users`
 | Role | Created by | Can do |
 | --- | --- | --- |
 | Super admin (founders) | Seeded at deploy | Everything below; create teacher and batch-manager accounts; assign batch managers to batches; override any score (every override written to the audit log) |
-| Teacher | Super admin | Create and edit questions; review and approve generated test cases; create one exam per batch with per-question marks; generate the exam PDF; see each student's scores by name; review appeals and re-run grading |
+| Teacher | Super admin | Assigned to batches by a super admin; create and edit questions; review and approve generated test cases; create one exam per batch with per-question marks; generate the exam PDF; see each student's scores by name; review appeals and re-run grading |
 | Batch manager | Super admin | Assigned to one or more batches; upload the student CSV; upload one cropped photo per student per question; mark a student absent; publish results; review appeals and re-run grading |
 | Student | Batch manager (CSV) | After publish: see own marks per question and which test cases failed; raise an appeal on a question |
 
@@ -149,7 +149,7 @@ Eight DynamoDB tables (one per entity, simpler for two people than single-table 
 
 | Table | Key (partition / sort) | Main fields | Index |
 | --- | --- | --- | --- |
-| Users | email | role, name, rollNo, batchId (students), batchIds (batch managers), active | byBatch: batchId; byRoll: rollNo |
+| Users | email | role, name, rollNo, batchId (students), batchIds (batch managers, teachers), active | byBatch: batchId; byRoll: rollNo |
 | Batches | batchId | name | — |
 | Questions | questionId / version | teacherEmail, title, statement, constraints, examples, signature, targetComplexity, timeLimitMs, memoryMb, compareMode, testStatus, testCount, testsKey | byTeacher: teacherEmail |
 | Exams | examId | batchId, title, date, questions [number, questionId, version, marks], status (DRAFT, READY, PUBLISHED), pdfKey, publishedBy, publishedAt | byBatch: batchId |
@@ -160,7 +160,7 @@ Eight DynamoDB tables (one per entity, simpler for two people than single-table 
 
 - `verdicts` holds one verdict per test. For small failed tests it also keeps the input, expected output and student output, each cut to 200 characters; large tests keep only the verdict. This stays well under DynamoDB's 400 KB item limit.
 - Displayed score = `override.score` if an override exists, otherwise `score`.
-- Score formula: `(testsPassed ÷ testsTotal) × marks`, or 0 when `meetsComplexity` is false or the status is `FAILED_TO_GRADE`. Absent students score 0 on every question and show "Absent".
+- Score formula: `(testsPassed ÷ testsTotal) × marks`, or 0 when `meetsComplexity` is false or the status is `FAILED_TO_GRADE`. Scores are rounded to 2 decimal places. Absent students score 0 on every question and show "Absent".
 
 **S3 layout** (one bucket, versioning on, no public access):
 
@@ -183,7 +183,7 @@ All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda 
 | --- | --- | --- |
 | `GET /me` | All | Current user, role, batches |
 | `POST /staff` | Super admin | Create a teacher or batch manager |
-| `PUT /staff/{email}/batches` | Super admin | Assign a batch manager to batches |
+| `PUT /staff/{email}/batches` | Super admin | Assign a teacher or batch manager to batches |
 | `POST /batches` | Super admin | Create a batch |
 | `PUT /answers/{examId}/{studentEmail}/{q}/override` | Super admin | Set or clear an override score with a reason (audited) |
 | `POST /batches/{batchId}/students/import` | Batch manager | Upload the CSV (name, college email, roll number, batch); returns created, updated and rejected rows |
@@ -230,7 +230,7 @@ Students see nothing until a batch manager publishes the exam; after that, appea
 3. They either re-upload a better crop and re-run, re-run as is, or close it with a note. A re-run's new score replaces the old one.
 4. The student sees the appeal status and the reviewer's note.
 
-**Overrides.** Only super admins can override a score, with a required reason. The audit log keeps the actor, time, old and new score, and reason; the student's view shows "Score adjusted by admin". An override stays in place through re-runs until a super admin clears it.
+**Overrides.** Only super admins can override a score, with a required reason. The audit log keeps the actor, time, old and new score, and reason; the student's view shows "Score adjusted by admin". An override stays in place through re-runs until a super admin clears it. An override can't be set on a student marked absent; unmark absent first.
 
 **Absent.** The batch manager marks a student absent in the upload app. While marked absent, uploads for that student are blocked; unmarking re-enables them.
 

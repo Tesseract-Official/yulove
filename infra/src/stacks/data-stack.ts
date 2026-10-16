@@ -2,19 +2,10 @@ import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-
 import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
+import { TABLE_NAMES, type TableName } from '@yulove/shared';
 import type { Construct } from 'constructs';
 
-export const TABLE_NAMES = [
-  'Users',
-  'Batches',
-  'Questions',
-  'Exams',
-  'ExamStudents',
-  'Answers',
-  'Appeals',
-  'AuditLog',
-] as const;
-export type TableName = (typeof TABLE_NAMES)[number];
+export { TABLE_NAMES, type TableName };
 
 export const GEMINI_SECRET_NAME = 'dsa-judge/gemini-api-key';
 

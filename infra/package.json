@@ -12,6 +12,7 @@
     "diff": "cdk diff"
   },
   "dependencies": {
+    "@yulove/shared": "workspace:^",
     "aws-cdk-lib": "^2.273.0",
     "constructs": "^10.8.1"
   },

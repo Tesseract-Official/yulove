@@ -8,6 +8,7 @@ import type { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import type { Queue } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
+import { BUCKET_ENV, QUEUE_ENV, TABLE_ENV } from '@yulove/shared';
 import { createNodeFunction } from '../lib/node-function.js';
 import type { TableName } from './data-stack.js';
 import type { QueueName } from './queue-stack.js';
@@ -29,23 +30,6 @@ export interface ApiStackProps extends StackProps {
   queues: Record<QueueName, Queue>;
   bucket: Bucket;
 }
-
-const TABLE_ENV: Record<TableName, string> = {
-  Users: 'USERS_TABLE',
-  Batches: 'BATCHES_TABLE',
-  Questions: 'QUESTIONS_TABLE',
-  Exams: 'EXAMS_TABLE',
-  ExamStudents: 'EXAM_STUDENTS_TABLE',
-  Answers: 'ANSWERS_TABLE',
-  Appeals: 'APPEALS_TABLE',
-  AuditLog: 'AUDIT_LOG_TABLE',
-};
-
-const QUEUE_ENV: Record<QueueName, string> = {
-  transcribe: 'TRANSCRIBE_QUEUE_URL',
-  execute: 'EXECUTE_QUEUE_URL',
-  results: 'RESULTS_QUEUE_URL',
-};
 
 export class ApiStack extends Stack {
   readonly httpApi: HttpApi;
@@ -115,7 +99,7 @@ export class ApiStack extends Stack {
     if (permissions.bucket) {
       const { bucket } = this.props;
       const access = permissions.bucket;
-      environment['BUCKET_NAME'] = bucket.bucketName;
+      environment[BUCKET_ENV] = bucket.bucketName;
       grants.push((fn) => {
         if (access === 'read') bucket.grantRead(fn);
         else if (access === 'write') bucket.grantWrite(fn);

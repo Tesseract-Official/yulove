@@ -1,9 +1,9 @@
 import { Duration, Stack, type StackProps } from 'aws-cdk-lib';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
+import { QUEUE_NAMES, type QueueName } from '@yulove/shared';
 import type { Construct } from 'constructs';
 
-export const QUEUE_NAMES = ['transcribe', 'execute', 'results'] as const;
-export type QueueName = (typeof QUEUE_NAMES)[number];
+export { QUEUE_NAMES, type QueueName };
 
 const VISIBILITY_MINUTES: Record<QueueName, number> = {
   transcribe: 12,
