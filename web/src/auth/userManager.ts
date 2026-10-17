@@ -24,6 +24,12 @@ export interface OidcClient {
   };
 }
 
+/** The sign-in return page and the post-logout page, on the origin the app is served from. */
+export function appUrls(origin: string): { redirectUri: string; logoutUri: string } {
+  const base = origin.replace(/\/+$/, '');
+  return { redirectUri: `${base}/auth/callback`, logoutUri: `${base}/` };
+}
+
 /**
  * Authorization code + PKCE against the Cognito hosted UI, going straight to Google.
  *
@@ -31,8 +37,12 @@ export interface OidcClient {
  * quick). The sign-in state that has to survive the trip to Cognito, the PKCE verifier and state
  * id, goes in sessionStorage; it holds no token.
  */
-export function createUserManager(config: AppConfig): UserManager {
+export function createUserManager(
+  config: AppConfig,
+  origin: string = window.location.origin,
+): UserManager {
   const domain = config.cognitoDomain;
+  const { redirectUri, logoutUri } = appUrls(origin);
   return new UserManager({
     authority: domain,
     // Cognito's endpoints are fixed paths on the hosted UI domain, so nothing is discovered.
@@ -43,8 +53,8 @@ export function createUserManager(config: AppConfig): UserManager {
       userinfo_endpoint: `${domain}/oauth2/userInfo`,
     },
     client_id: config.clientId,
-    redirect_uri: config.redirectUri,
-    post_logout_redirect_uri: config.logoutUri,
+    redirect_uri: redirectUri,
+    post_logout_redirect_uri: logoutUri,
     response_type: 'code',
     scope: 'openid email profile',
     extraQueryParams: { identity_provider: 'Google' },
@@ -55,11 +65,11 @@ export function createUserManager(config: AppConfig): UserManager {
   });
 }
 
-/** Cognito's logout endpoint; it ends the hosted UI session and returns to `logoutUri`. */
-export function buildLogoutUrl(config: AppConfig): string {
+/** Cognito's logout endpoint; it ends the hosted UI session and returns to the app's home page. */
+export function buildLogoutUrl(config: AppConfig, origin: string = window.location.origin): string {
   const url = new URL(`${config.cognitoDomain}/logout`);
   url.searchParams.set('client_id', config.clientId);
-  url.searchParams.set('logout_uri', config.logoutUri);
+  url.searchParams.set('logout_uri', appUrls(origin).logoutUri);
   return url.toString();
 }
 

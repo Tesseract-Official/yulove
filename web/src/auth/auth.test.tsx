@@ -12,6 +12,7 @@ import {
   stubApi,
 } from '../test/helpers.js';
 import {
+  appUrls,
   buildLogoutUrl,
   createUserManager,
   describeSignInError,
@@ -85,7 +86,8 @@ describe('sign-out', () => {
     const url = new URL(navigateExternal.mock.calls[0]![0] as string);
     expect(url.origin + url.pathname).toBe('https://auth.example.com/logout');
     expect(url.searchParams.get('client_id')).toBe('client-123');
-    expect(url.searchParams.get('logout_uri')).toBe('http://localhost:5173/');
+    // The page the app is served from, not a configured address.
+    expect(url.searchParams.get('logout_uri')).toBe(`${window.location.origin}/`);
     expect(buildLogoutUrl(CONFIG)).toBe(url.toString());
   });
 });
@@ -139,19 +141,28 @@ describe('signing in again after a reload', () => {
 
 describe('the real sign-in settings', () => {
   it('asks Cognito for the code flow with PKCE, going straight to Google', async () => {
-    const protocol = new ProtocolClient(createUserManager(CONFIG).settings);
+    const protocol = new ProtocolClient(
+      createUserManager(CONFIG, 'https://exam.example.com').settings,
+    );
 
     const request = await protocol.createSigninRequest({ state: { returnTo: '/' } });
     const url = new URL(request.url);
 
     expect(url.origin + url.pathname).toBe('https://auth.example.com/oauth2/authorize');
     expect(url.searchParams.get('client_id')).toBe('client-123');
-    expect(url.searchParams.get('redirect_uri')).toBe('http://localhost:5173/auth/callback');
+    expect(url.searchParams.get('redirect_uri')).toBe('https://exam.example.com/auth/callback');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('scope')).toBe('openid email profile');
     expect(url.searchParams.get('identity_provider')).toBe('Google');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('code_challenge')).toBeTruthy();
+  });
+
+  it('returns to the origin the app is served from by default', () => {
+    const settings = createUserManager(CONFIG).settings;
+
+    expect(settings.redirect_uri).toBe(`${window.location.origin}/auth/callback`);
+    expect(settings.post_logout_redirect_uri).toBe(`${window.location.origin}/`);
   });
 
   it('keeps tokens in memory only', async () => {
@@ -170,6 +181,18 @@ describe('the real sign-in settings', () => {
 
   it('renews quietly before the token expires', () => {
     expect(createUserManager(CONFIG).settings.automaticSilentRenew).toBe(true);
+  });
+});
+
+describe('appUrls', () => {
+  it('puts the callback and the home page on the given origin', () => {
+    expect(appUrls('https://exam.vercel.app')).toEqual({
+      redirectUri: 'https://exam.vercel.app/auth/callback',
+      logoutUri: 'https://exam.vercel.app/',
+    });
+    expect(appUrls('http://localhost:5173/').redirectUri).toBe(
+      'http://localhost:5173/auth/callback',
+    );
   });
 });
 

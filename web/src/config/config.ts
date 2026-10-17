@@ -2,14 +2,16 @@ import { z } from 'zod';
 
 const baseUrl = z.url().transform((value) => value.replace(/\/+$/, ''));
 
-/** What /config.json must contain. Written by `pnpm web:env` locally and by WebDeploy when deployed. */
+/**
+ * What /config.json must contain. Written by `pnpm web:env` locally and by the Vercel build
+ * (`build:vercel`). The redirect and logout URLs are not here: the app derives them from the origin
+ * it is served from.
+ */
 export const appConfigSchema = z.object({
   apiUrl: baseUrl,
   /** The Cognito hosted UI domain, e.g. https://dsa-judge-123.auth.ap-south-1.amazoncognito.com */
   cognitoDomain: baseUrl,
   clientId: z.string().trim().min(1),
-  redirectUri: z.url(),
-  logoutUri: z.url(),
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;
 

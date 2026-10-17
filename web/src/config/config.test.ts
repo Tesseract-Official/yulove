@@ -5,8 +5,6 @@ const valid = {
   apiUrl: 'https://api.example.com/',
   cognitoDomain: 'https://auth.example.com',
   clientId: 'abc',
-  redirectUri: 'https://site.example.com/auth/callback',
-  logoutUri: 'https://site.example.com/',
 };
 
 const respond = (body: BodyInit | null, status = 200) =>
@@ -20,6 +18,24 @@ describe('loadConfig', () => {
 
     expect(fetchFn).toHaveBeenCalledWith('/config.json', { cache: 'no-store' });
     expect(config).toEqual({ ...valid, apiUrl: 'https://api.example.com' });
+  });
+
+  it('needs only the API URL, the Cognito domain and the client id', async () => {
+    const config = await loadConfig(respond(JSON.stringify(valid)));
+    expect(Object.keys(config).sort()).toEqual(['apiUrl', 'clientId', 'cognitoDomain']);
+  });
+
+  it('ignores the redirect and logout URLs an older config.json still has', async () => {
+    const old = {
+      ...valid,
+      redirectUri: 'http://localhost:5173/auth/callback',
+      logoutUri: 'http://localhost:5173/',
+    };
+
+    const config = await loadConfig(respond(JSON.stringify(old)));
+
+    expect(config).not.toHaveProperty('redirectUri');
+    expect(config).not.toHaveProperty('logoutUri');
   });
 
   it('rejects a missing file with a message that names the fix', async () => {

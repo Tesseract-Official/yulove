@@ -145,16 +145,13 @@ describe('DataStack bucket', () => {
     });
   });
 
-  it('allows PUT and POST from the web origins only', () => {
+  it('allows PUT and POST from the web origin only', () => {
     template.hasResourceProperties('AWS::S3::Bucket', {
       CorsConfiguration: {
         CorsRules: [
           Match.objectLike({
             AllowedMethods: ['PUT', 'POST'],
-            AllowedOrigins: [
-              'https://app.college.edu',
-              { 'Fn::Join': ['', ['https://', Match.anyValue()]] },
-            ],
+            AllowedOrigins: ['https://app.college.edu'],
           }),
         ],
       },

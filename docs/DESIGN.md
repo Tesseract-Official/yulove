@@ -60,7 +60,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 
 | Component | Choice | Notes |
 | --- | --- | --- |
-| Frontend | React single-page app on S3 + CloudFront | Separate screens per role; crop and compress before upload |
+| Frontend | React single-page app hosted on Vercel | Separate screens per role; crop and compress before upload |
 | Sign-in | Cognito user pool, Google identity provider | Pre-sign-up check on college domain (or a founder address from the `superAdminEmails` setting) and `Users` table |
 | API | API Gateway HTTP API + Lambda, TypeScript on Node.js 22 | Types shared with the React app |
 | Queues | SQS FIFO × 3: transcribe, execute, results | Content-based IDs off; dedup ID includes attempt |

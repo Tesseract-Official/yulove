@@ -19,7 +19,8 @@
     "try:transcribe": "pnpm --filter @yulove/scripts try:transcribe",
     "seed:dev-questions": "pnpm --filter @yulove/scripts seed:dev-questions",
     "e2e:pipeline": "pnpm --filter @yulove/scripts e2e:pipeline",
-    "web:env": "pnpm --filter @yulove/scripts web:env"
+    "web:env": "pnpm --filter @yulove/scripts web:env",
+    "web:vercel-env": "pnpm --filter @yulove/scripts web:vercel-env"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

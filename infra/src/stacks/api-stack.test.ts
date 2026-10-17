@@ -11,15 +11,10 @@ describe('ApiStack without routes', () => {
   const { templates } = buildApp();
   const template = templates.api;
 
-  it('is an HTTP API limited to the web origins by CORS', () => {
+  it('is an HTTP API limited to the web origin by CORS', () => {
     template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',
-      CorsConfiguration: Match.objectLike({
-        AllowOrigins: [
-          'https://app.college.edu',
-          { 'Fn::Join': ['', ['https://', Match.anyValue()]] },
-        ],
-      }),
+      CorsConfiguration: Match.objectLike({ AllowOrigins: ['https://app.college.edu'] }),
     });
   });
 

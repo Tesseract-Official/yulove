@@ -13,8 +13,6 @@ export const CONFIG: AppConfig = {
   apiUrl: 'https://api.example.com',
   cognitoDomain: 'https://auth.example.com',
   clientId: 'client-123',
-  redirectUri: 'http://localhost:5173/auth/callback',
-  logoutUri: 'http://localhost:5173/',
 };
 
 export const ID_TOKEN = 'the-id-token';

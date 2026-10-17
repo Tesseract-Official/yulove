@@ -13,7 +13,8 @@
     "try:transcribe": "tsx try-transcribe.ts",
     "seed:dev-questions": "tsx seed-dev-questions.ts",
     "e2e:pipeline": "tsx e2e-pipeline.ts",
-    "web:env": "tsx web-env.ts"
+    "web:env": "tsx web-env.ts",
+    "web:vercel-env": "tsx web-vercel-env.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1152.0",

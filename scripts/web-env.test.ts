@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { API_STACK, DEV_ORIGIN, buildWebConfig, writeWebConfig } from './web-env.js';
+import { API_STACK, buildWebConfig, writeWebConfig } from './web-env.js';
 
 const auth = {
   UserPoolId: 'ap-south-1_abc',
@@ -14,15 +14,12 @@ const auth = {
 const api = { ApiUrl: 'https://abc123.execute-api.ap-south-1.amazonaws.com' };
 
 describe('buildWebConfig', () => {
-  it('uses the deployed outputs and the local dev origin', () => {
+  it('uses the deployed outputs, and only the three keys the app needs', () => {
     expect(buildWebConfig(auth, api)).toEqual({
       apiUrl: 'https://abc123.execute-api.ap-south-1.amazonaws.com',
       cognitoDomain: 'https://dsa-judge-1.auth.ap-south-1.amazoncognito.com',
       clientId: 'client-xyz',
-      redirectUri: 'http://localhost:5173/auth/callback',
-      logoutUri: 'http://localhost:5173/',
     });
-    expect(DEV_ORIGIN).toBe('http://localhost:5173');
   });
 
   it('drops trailing slashes', () => {

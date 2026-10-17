@@ -3,5 +3,3 @@ export { ApiStack, type Access, type RoutePermissions } from './stacks/api-stack
 export { AuthStack, GOOGLE_OAUTH_SECRET_NAME } from './stacks/auth-stack.js';
 export { DataStack, GEMINI_SECRET_NAME, TABLE_NAMES, type TableName } from './stacks/data-stack.js';
 export { QueueStack, QUEUE_NAMES, type QueueName } from './stacks/queue-stack.js';
-export { WebDeployStack, type WebDeployStackProps } from './stacks/web-deploy-stack.js';
-export { WebHostingStack } from './stacks/web-hosting-stack.js';

@@ -1,6 +1,3 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { readConfig } from './config.js';
@@ -11,8 +8,6 @@ import { BudgetStack } from './stacks/budget-stack.js';
 import { DataStack } from './stacks/data-stack.js';
 import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
-import { WebDeployStack } from './stacks/web-deploy-stack.js';
-import { WebHostingStack } from './stacks/web-hosting-stack.js';
 import { WorkerStack } from './stacks/worker-stack.js';
 
 export const TEST_CONTEXT = {
@@ -27,21 +22,18 @@ export const TEST_CONTEXT = {
 /** Builds the stacks the way app.ts does, without running esbuild. */
 export function buildApp(
   context: Record<string, string | string[]> = TEST_CONTEXT,
-  options: { routes?: boolean; worker?: boolean; budget?: boolean; webDeploy?: boolean } = {},
+  options: { routes?: boolean; worker?: boolean; budget?: boolean } = {},
 ) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
   const {
     collegeDomain,
-    webOrigins: devOrigins,
+    webOrigins,
     geminiTestgenModel,
     geminiTranscribeModel,
     budgetEmail,
     superAdminEmails,
   } = readConfig(app.node);
   const env = { account: '123456789012', region: 'ap-south-1' };
-
-  const hosting = new WebHostingStack(app, 'WebHosting', { env });
-  const webOrigins = [...devOrigins, hosting.siteUrl];
 
   const data = new DataStack(app, 'Data', { env, webOrigins });
   const auth = new AuthStack(app, 'Auth', {
@@ -91,25 +83,8 @@ export function buildApp(
       })
     : undefined;
 
-  // The deploy stack uploads a folder, so it gets a stand-in for web/dist.
-  let webDeploy: WebDeployStack | undefined;
-  if (options.webDeploy) {
-    const dist = mkdtempSync(join(tmpdir(), 'web-dist-'));
-    writeFileSync(join(dist, 'index.html'), '<!doctype html><title>test</title>');
-    webDeploy = new WebDeployStack(app, 'WebDeploy', {
-      env,
-      hosting,
-      userPoolClient: auth.userPoolClient,
-      userPoolDomain: auth.userPoolDomain,
-      httpApi: api.httpApi,
-      webDistPath: dist,
-    });
-  }
-
   return {
     app,
-    hosting,
-    webDeploy,
     data,
     auth,
     queues,
@@ -117,16 +92,8 @@ export function buildApp(
     worker,
     budget,
     api,
-    // Kept out of `templates`: its deployment helper Lambdas are CDK's own, not Node.js 22 code.
-    webDeployTemplate: () => {
-      if (!webDeploy) throw new Error('Build the app with { webDeploy: true } first');
-      return Template.fromStack(webDeploy);
-    },
     // Lazy: synthesising freezes a stack, so routes must be added before the first access.
     templates: {
-      get hosting() {
-        return Template.fromStack(hosting);
-      },
       get data() {
         return Template.fromStack(data);
       },

@@ -7,34 +7,39 @@ import { AUTH_STACK, requiredOutput, stackOutputs } from './smoke-worker.js';
 export const REGION = 'ap-south-1';
 export const API_STACK = 'DsaJudgeApi';
 
-/** Where the Vite dev server (port 5173, strict) serves the app. Cognito allows these URLs. */
-export const DEV_ORIGIN = 'http://localhost:5173';
-
 export const CONFIG_FILE = fileURLToPath(new URL('../web/public/config.json', import.meta.url));
 
-/** What the web app reads from /config.json at startup (see web/src/config/config.ts). */
+/**
+ * What the web app reads from /config.json at startup (web/src/config/config.ts). The redirect and
+ * logout URLs are not in it: the app uses the origin it is served from, so http://localhost:5173
+ * has to be in `webOrigin` in infra/cdk.json for local development.
+ */
 export interface WebConfig {
   apiUrl: string;
   cognitoDomain: string;
   clientId: string;
-  redirectUri: string;
-  logoutUri: string;
 }
 
-/** Builds the local-development config from the deployed Auth and API stack outputs. */
+/** Builds the web app's config from the deployed Auth and API stack outputs. */
 export function buildWebConfig(
   auth: Record<string, string>,
   api: Record<string, string>,
-  origin: string = DEV_ORIGIN,
 ): WebConfig {
-  const base = origin.replace(/\/+$/, '');
   return {
     apiUrl: requiredOutput(api, 'ApiUrl', API_STACK).replace(/\/+$/, ''),
     cognitoDomain: requiredOutput(auth, 'HostedUiBaseUrl', AUTH_STACK).replace(/\/+$/, ''),
     clientId: requiredOutput(auth, 'UserPoolClientId', AUTH_STACK),
-    redirectUri: `${base}/auth/callback`,
-    logoutUri: `${base}/`,
   };
+}
+
+/** Reads the Auth and API stack outputs. The client reads AWS_PROFILE from the environment. */
+export async function readWebConfig(): Promise<WebConfig> {
+  const cfn = new CloudFormationClient({ region: REGION });
+  const [auth, api] = await Promise.all([
+    stackOutputs(cfn, AUTH_STACK),
+    stackOutputs(cfn, API_STACK),
+  ]);
+  return buildWebConfig(auth, api);
 }
 
 export function writeWebConfig(config: WebConfig, file: string = CONFIG_FILE): void {
@@ -52,20 +57,13 @@ async function main(): Promise<void> {
     throw new Error('Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm web:env');
   }
 
-  // The client reads AWS_PROFILE through the SDK's default credential chain.
-  const cfn = new CloudFormationClient({ region: REGION });
-  const [auth, api] = await Promise.all([
-    stackOutputs(cfn, AUTH_STACK),
-    stackOutputs(cfn, API_STACK),
-  ]);
-  const config = buildWebConfig(auth, api);
+  const config = await readWebConfig();
 
   writeWebConfig(config);
   console.log(`Profile ${profile}. Wrote ${CONFIG_FILE}`);
   console.log(`  API         ${config.apiUrl}`);
   console.log(`  Cognito     ${config.cognitoDomain}`);
-  console.log(`  Redirect    ${config.redirectUri}`);
-  console.log('Start the app with: pnpm --filter @yulove/web dev');
+  console.log('Start the app with: pnpm --filter @yulove/web dev (http://localhost:5173)');
 }
 
 const entry = process.argv[1];
