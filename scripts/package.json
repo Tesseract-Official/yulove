@@ -10,7 +10,8 @@
     "seed:super-admin": "tsx seed-super-admin.ts",
     "seed:super-admins": "tsx seed-super-admins.ts",
     "smoke:worker": "tsx smoke-worker.ts",
-    "try:transcribe": "tsx try-transcribe.ts"
+    "try:transcribe": "tsx try-transcribe.ts",
+    "seed:dev-questions": "tsx seed-dev-questions.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1152.0",

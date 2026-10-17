@@ -13,6 +13,9 @@ import { createNodeFunction } from '../lib/node-function.js';
 import { grantObjects } from '../lib/s3-grants.js';
 import { GEMINI_SECRET_NAME } from './data-stack.js';
 
+/** Most transcriptions that run at the same time. */
+export const TRANSCRIBE_MAX_CONCURRENCY = 5;
+
 export interface PipelineStackProps extends StackProps {
   /** Gemini model for generating tests (the Lambda's GEMINI_MODEL). */
   geminiTestgenModel: string;
@@ -81,9 +84,6 @@ export class PipelineStack extends Stack {
       description: 'Transcribes an answer photo with Gemini and queues it for the worker',
       timeout: Duration.seconds(120),
       memorySize: 512,
-      // Keeps Gemini traffic (and spend) bounded and leaves the rest of the account's Lambda
-      // concurrency to the API. The account's quota must be raised before this can be deployed.
-      reservedConcurrentExecutions: 10,
       environment: {
         [TABLE_ENV.Answers]: props.answersTable.tableName,
         [TABLE_ENV.Questions]: props.questionsTable.tableName,
@@ -105,9 +105,16 @@ export class PipelineStack extends Stack {
       },
     });
 
-    // The transcribe queue triggers it: one message per invocation. This also grants receiving,
+    // The transcribe queue triggers it: one message per invocation, never more than 5 at once.
+    // That bounds Gemini traffic and leaves the rest of the account's Lambda concurrency (a quota
+    // of 10 in total, which is too low to reserve any) to the API. This also grants receiving,
     // deleting and reading attributes of that queue, and nothing else on it.
-    fn.addEventSource(new SqsEventSource(props.transcribeQueue, { batchSize: 1 }));
+    fn.addEventSource(
+      new SqsEventSource(props.transcribeQueue, {
+        batchSize: 1,
+        maxConcurrency: TRANSCRIBE_MAX_CONCURRENCY,
+      }),
+    );
 
     // Exactly what it does, and nothing else.
     props.geminiApiKeySecret.grantRead(fn);

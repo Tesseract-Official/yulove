@@ -74,6 +74,8 @@ export interface QuestionItem {
   testRegenerations?: number;
   /** Why the last generation failed, shown to the teacher. */
   testFailure?: string;
+  /** Sample question written by scripts/seed-dev-questions.ts; never real exam content. */
+  dev?: boolean;
 }
 
 export interface ExamQuestionRef {

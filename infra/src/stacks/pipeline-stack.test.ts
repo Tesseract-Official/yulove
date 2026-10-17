@@ -1,6 +1,7 @@
 import { Match } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../testing.js';
+import { TRANSCRIBE_MAX_CONCURRENCY } from './pipeline-stack.js';
 
 const { templates, pipeline } = buildApp();
 const template = templates.pipeline;
@@ -150,10 +151,12 @@ describe('PipelineStack: Transcribe Lambda', () => {
     expect(p['MemorySize']).toBe(512);
   });
 
-  it('reserves concurrency 10', () => {
-    expect(lambdaFor(TRANSCRIBE).properties['ReservedConcurrentExecutions']).toBe(10);
-    // The test-generation function is not limited.
-    expect(lambdaFor(TESTGEN).properties).not.toHaveProperty('ReservedConcurrentExecutions');
+  it('reserves no concurrency (the account quota is too low); the queue trigger caps it at 5', () => {
+    expect(lambdaFor(TRANSCRIBE).properties).not.toHaveProperty('ReservedConcurrentExecutions');
+    expect(TRANSCRIBE_MAX_CONCURRENCY).toBe(5);
+    template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+      ScalingConfig: { MaximumConcurrency: 5 },
+    });
   });
 
   it('is triggered by the transcribe queue, one message at a time', () => {
@@ -164,7 +167,6 @@ describe('PipelineStack: Transcribe Lambda', () => {
     });
     const mapping = Object.values(template.findResources('AWS::Lambda::EventSourceMapping'))[0];
     expect(JSON.stringify(mapping?.Properties.EventSourceArn)).toContain('transcribeQueue');
-    expect(mapping?.Properties).not.toHaveProperty('ScalingConfig');
   });
 
   it('takes its model from geminiTranscribeModel and its secret from Secrets Manager', () => {
