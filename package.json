@@ -15,7 +15,8 @@
     "build": "pnpm -r build",
     "test:worker-docker": "pnpm --filter @yulove/worker test:docker",
     "seed:super-admins": "pnpm --filter @yulove/scripts seed:super-admins",
-    "smoke:worker": "pnpm --filter @yulove/scripts smoke:worker"
+    "smoke:worker": "pnpm --filter @yulove/scripts smoke:worker",
+    "try:transcribe": "pnpm --filter @yulove/scripts try:transcribe"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

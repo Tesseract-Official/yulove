@@ -25,8 +25,14 @@ export function buildApp(
   options: { routes?: boolean; worker?: boolean; budget?: boolean } = {},
 ) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
-  const { collegeDomain, webOrigins, geminiTestgenModel, budgetEmail, superAdminEmails } =
-    readConfig(app.node);
+  const {
+    collegeDomain,
+    webOrigins,
+    geminiTestgenModel,
+    geminiTranscribeModel,
+    budgetEmail,
+    superAdminEmails,
+  } = readConfig(app.node);
   const env = { account: '123456789012', region: 'ap-south-1' };
 
   const data = new DataStack(app, 'Data', { env, webOrigins });
@@ -41,8 +47,11 @@ export function buildApp(
   const pipeline = new PipelineStack(app, 'Pipeline', {
     env,
     geminiTestgenModel,
+    geminiTranscribeModel,
     questionsTable: data.tables.Questions,
+    answersTable: data.tables.Answers,
     bucket: data.bucket,
+    transcribeQueue: queues.queues.transcribe,
     executeQueue: queues.queues.execute,
     geminiApiKeySecret: data.geminiApiKeySecret,
   });

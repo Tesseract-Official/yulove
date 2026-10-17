@@ -17,6 +17,7 @@ interface RouteDef {
 
 const QUESTIONS_ONLY = 'questions/*';
 const EXAMS_ONLY = 'exams/*';
+const ANSWERS_ONLY = 'answers/*';
 
 /**
  * PDFKit's Node build reads `import.meta.url` when it loads, which does not exist in the CommonJS
@@ -162,6 +163,32 @@ export const ROUTES: readonly RouteDef[] = [
       tables: { Users: 'read', Exams: 'read' },
       bucket: 'read', // GetObject, only under exams/: the download link is signed with it
       bucketPrefix: EXAMS_ONLY,
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/answers/upload-url',
+    handler: 'request-upload-url',
+    permissions: {
+      // Reads who the student is and whether the exam takes answers; creates the student's
+      // ExamStudents row if they were imported after the exam was made.
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite' },
+      // The signed upload is made with this role, so the role may put objects under answers/.
+      bucket: 'write',
+      bucketPrefix: ANSWERS_ONLY,
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/answers/submit',
+    handler: 'submit-answer',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'write' },
+      // HeadObject on the photo; the listing right makes a missing photo a 404, not a 403.
+      bucket: 'read',
+      bucketPrefix: ANSWERS_ONLY,
+      bucketList: true,
+      queues: { transcribe: 'send' },
     },
   },
 ];

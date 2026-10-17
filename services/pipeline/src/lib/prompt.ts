@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export type PromptSection = 'generate' | 'regenerate';
+export type PromptSection = 'generate' | 'regenerate' | 'transcribe';
 
 /**
  * Reads prompts/testgen.md. In the Lambda the file is copied next to the bundle at build time,

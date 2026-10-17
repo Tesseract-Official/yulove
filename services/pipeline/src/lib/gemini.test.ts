@@ -46,4 +46,32 @@ describe('createGeminiClient', () => {
       createGeminiClient('k').generateJson({ model: 'm', prompt: 'p', schema: {} }),
     ).rejects.toThrow(/no text/);
   });
+
+  it('sends a photo as inline data beside the prompt, with a timeout', async () => {
+    generateContent.mockResolvedValue({ text: '{}' });
+
+    await createGeminiClient('k').generateJson({
+      model: 'm',
+      prompt: 'read this',
+      schema: { type: 'object' },
+      image: { mimeType: 'image/jpeg', data: new Uint8Array([1, 2, 3]) },
+      timeoutMs: 40_000,
+    });
+
+    expect(generateContent).toHaveBeenCalledWith({
+      model: 'm',
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: 'read this' }, { inlineData: { mimeType: 'image/jpeg', data: 'AQID' } }],
+        },
+      ],
+      config: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+        responseJsonSchema: { type: 'object' },
+        httpOptions: { timeout: 40_000 },
+      },
+    });
+  });
 });

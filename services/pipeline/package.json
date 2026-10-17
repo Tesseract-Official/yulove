@@ -20,5 +20,8 @@
   },
   "devDependencies": {
     "aws-sdk-client-mock": "^4.1.0"
+  },
+  "exports": {
+    "./transcribe": "./src/lib/transcribe.ts"
   }
 }

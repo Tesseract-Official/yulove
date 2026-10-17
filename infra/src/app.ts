@@ -10,9 +10,14 @@ import { QueueStack } from './stacks/queue-stack.js';
 import { WorkerStack } from './stacks/worker-stack.js';
 
 const app = new App();
-const { collegeDomain, webOrigins, geminiTestgenModel, budgetEmail, superAdminEmails } = readConfig(
-  app.node,
-);
+const {
+  collegeDomain,
+  webOrigins,
+  geminiTestgenModel,
+  geminiTranscribeModel,
+  budgetEmail,
+  superAdminEmails,
+} = readConfig(app.node);
 const env = { account: process.env['CDK_DEFAULT_ACCOUNT'], region: REGION };
 
 const data = new DataStack(app, 'DsaJudgeData', { env, webOrigins });
@@ -39,8 +44,11 @@ new WorkerStack(app, 'DsaJudgeWorker', {
 const pipeline = new PipelineStack(app, 'DsaJudgePipeline', {
   env,
   geminiTestgenModel,
+  geminiTranscribeModel,
   questionsTable: data.tables.Questions,
+  answersTable: data.tables.Answers,
   bucket: data.bucket,
+  transcribeQueue: queues.queues.transcribe,
   executeQueue: queues.queues.execute,
   geminiApiKeySecret: data.geminiApiKeySecret,
 });

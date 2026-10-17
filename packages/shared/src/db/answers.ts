@@ -61,12 +61,13 @@ export async function beginAttempt(key: AnswerKey, imageKey?: string): Promise<n
     set += ', #imageKey = :imageKey';
   }
   names['#failReason'] = 'failReason';
+  names['#failDetail'] = 'failDetail';
 
   const out = await docClient().send(
     new UpdateCommand({
       TableName: table(),
       Key: keyOf(key),
-      UpdateExpression: `SET ${set} ADD #attempt :one REMOVE #failReason`,
+      UpdateExpression: `SET ${set} ADD #attempt :one REMOVE #failReason, #failDetail`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
       ReturnValues: 'UPDATED_NEW',
@@ -137,16 +138,31 @@ export function saveTranscription(
   attempt: number,
   transcription: Transcription,
 ): Promise<WriteOutcome> {
-  return writeForAttempt(key, attempt, { ...transcription, status: 'RUNNING' });
+  return writeForAttempt(key, attempt, { ...transcription, status: 'RUNNING' }, [
+    'failReason',
+    'failDetail',
+  ]);
 }
 
-/** Ends the answer as FAILED_TO_GRADE with a reason. */
+/** Longest failure explanation that is stored. */
+export const MAX_FAIL_DETAIL = 300;
+
+/** Ends the answer as FAILED_TO_GRADE with a reason and, optionally, a readable explanation. */
 export function markFailed(
   key: AnswerKey,
   attempt: number,
   failReason: FailReason,
+  detail?: string,
 ): Promise<WriteOutcome> {
-  return writeForAttempt(key, attempt, { status: 'FAILED_TO_GRADE', failReason });
+  const text = detail?.trim();
+  const failDetail =
+    text && text.length > MAX_FAIL_DETAIL ? `${text.slice(0, MAX_FAIL_DETAIL - 3)}...` : text;
+  return writeForAttempt(
+    key,
+    attempt,
+    { status: 'FAILED_TO_GRADE', failReason, failDetail: failDetail || undefined },
+    failDetail ? [] : ['failDetail'],
+  );
 }
 
 export interface AnswerResult {
@@ -166,7 +182,10 @@ export function recordAnswerResult(
   attempt: number,
   result: AnswerResult,
 ): Promise<WriteOutcome> {
-  return writeForAttempt(key, attempt, { ...result, status: 'GRADED' }, ['failReason']);
+  return writeForAttempt(key, attempt, { ...result, status: 'GRADED' }, [
+    'failReason',
+    'failDetail',
+  ]);
 }
 
 export async function setOverride(key: AnswerKey, override: Override): Promise<void> {

@@ -12,6 +12,8 @@ interface Expected {
   collegeDomain?: boolean;
   /** The route's access to the bucket: exactly these S3 actions on this key pattern. */
   bucket?: { actions: string[]; pattern: string; listBucket?: boolean };
+  /** The route may send messages to exactly this queue (and its URL is in the environment). */
+  sendsTo?: 'transcribe';
   /** The route may invoke the test-generation Lambda, and no other function. */
   invokesTestGeneration?: boolean;
 }
@@ -74,6 +76,18 @@ const EXPECTED: Expected[] = [
     routeKey: 'GET /exams/{id}/pdf',
     tables: { Users: 'read', Exams: 'read' },
     bucket: { actions: ['s3:GetObject'], pattern: 'exams/*' },
+  },
+  {
+    routeKey: 'POST /answers/upload-url',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite' },
+    // The presigned upload is signed with this role, so it may put objects under answers/.
+    bucket: { actions: ['s3:PutObject'], pattern: 'answers/*' },
+  },
+  {
+    routeKey: 'POST /answers/submit',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'write' },
+    bucket: { actions: ['s3:GetObject'], pattern: 'answers/*', listBucket: true },
+    sendsTo: 'transcribe',
   },
 ];
 
@@ -201,10 +215,30 @@ describe('registered routes', () => {
       expect(JSON.stringify(statements.map((s) => s.Resource))).not.toContain('index');
     });
 
-    it('cannot touch queues or secrets', () => {
+    it('cannot touch secrets', () => {
       const actions = statementsFor(template, routeKey).flatMap(actionsOf);
-      expect(actions.filter((a) => /^(sqs|secretsmanager):/.test(a))).toEqual([]);
+      expect(actions.filter((a) => /^secretsmanager:/.test(a))).toEqual([]);
     });
+
+    it(
+      expected.sendsTo
+        ? `can only send messages to the ${expected.sendsTo} queue`
+        : 'cannot touch queues',
+      () => {
+        const sqs = statementsFor(template, routeKey).filter((s) =>
+          actionsOf(s).some((a) => a.startsWith('sqs:')),
+        );
+        if (!expected.sendsTo) {
+          expect(sqs).toEqual([]);
+          return;
+        }
+        expect(sqs).toHaveLength(1);
+        const actions = actionsOf(sqs[0] as Statement);
+        expect(actions).toContain('sqs:SendMessage');
+        expect(actions.filter((a) => /Receive|Delete|Purge/.test(a))).toEqual([]);
+        expect(JSON.stringify(sqs[0]?.Resource)).toContain(`${expected.sendsTo}Queue`);
+      },
+    );
 
     it(
       expected.bucket
@@ -287,7 +321,9 @@ describe('registered routes', () => {
       );
       expect(vars.includes('BUCKET_NAME')).toBe(Boolean(expected.bucket));
       expect(vars.includes('TESTGEN_FUNCTION_NAME')).toBe(Boolean(expected.invokesTestGeneration));
-      expect(vars.filter((v) => v.endsWith('_QUEUE_URL'))).toEqual([]);
+      expect(vars.filter((v) => v.endsWith('_QUEUE_URL'))).toEqual(
+        expected.sendsTo ? ['TRANSCRIBE_QUEUE_URL'] : [],
+      );
     });
   });
 });

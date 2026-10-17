@@ -138,6 +138,8 @@ export interface AnswerItem {
   attempt: number;
   status: AnswerStatus;
   failReason?: FailReason;
+  /** A short, readable explanation for the failure (at most 300 characters). */
+  failDetail?: string;
   language?: Language;
   rawTranscription?: string;
   correctedCode?: string;

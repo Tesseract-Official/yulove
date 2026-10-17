@@ -71,7 +71,7 @@ describe('beginAttempt', () => {
     expect(input.Key).toEqual(dbKey);
     expect(input.UpdateExpression).toContain('ADD #attempt :one');
     expect(input.UpdateExpression).toContain('#status = :queued');
-    expect(input.UpdateExpression).toContain('REMOVE #failReason');
+    expect(input.UpdateExpression).toContain('REMOVE #failReason, #failDetail');
     expect(input.ExpressionAttributeValues).toMatchObject({
       ':one': 1,
       ':queued': 'QUEUED',
@@ -182,6 +182,28 @@ describe('other stage writes are guarded by the attempt too', () => {
       ':status': 'FAILED_TO_GRADE',
       ':failReason': 'GEMINI_ERROR',
     });
+  });
+
+  it('markFailed stores a readable detail, cut to 300 characters', async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+
+    await markFailed(key, 2, 'GEMINI_ERROR', '  Transcription service busy, re-run  ');
+    expect(lastUpdate().ExpressionAttributeValues).toMatchObject({
+      ':failDetail': 'Transcription service busy, re-run',
+    });
+    expect(lastUpdate().UpdateExpression).not.toContain('REMOVE');
+
+    await markFailed(key, 2, 'GEMINI_ERROR', 'x'.repeat(500));
+    const stored = lastUpdate().ExpressionAttributeValues?.[':failDetail'] as string;
+    expect(stored).toHaveLength(300);
+    expect(stored.endsWith('...')).toBe(true);
+  });
+
+  it('markFailed without a detail clears any earlier one', async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+    await markFailed(key, 2, 'UNREADABLE');
+    expect(lastUpdate().UpdateExpression).toContain('REMOVE #rm_failDetail');
+    expect(lastUpdate().ExpressionAttributeValues).not.toHaveProperty(':failDetail');
   });
 
   it('saveTranscription moves the answer to RUNNING', async () => {
