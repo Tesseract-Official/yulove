@@ -194,3 +194,30 @@ export async function startAttempt(target: AnswerTarget, imageKey: string): Prom
   }
   return attempt;
 }
+
+/**
+ * Grades an answer again (batch manager, teacher, or a RERUN appeal): the same checks as a
+ * submission (READY or PUBLISHED exam, valid question, active student, not absent), the answer
+ * and its photo must exist, then a new attempt is counted (QUEUED, failure and busy count
+ * cleared) and a transcription is queued. A photo uploaded just before is the one used, since
+ * upload-url writes the same key. The old score and any override stay until a new result replaces
+ * the score.
+ */
+export async function rerunAnswer(
+  ctx: AuthContext,
+  ref: { examId: string; studentEmail: string; questionNumber: number },
+): Promise<{ target: AnswerTarget; attempt: number }> {
+  const target = await resolveAnswerTarget(ctx, ref);
+
+  const answer = await answersDb.getAnswer({
+    examId: target.exam.examId,
+    studentEmail: target.student.email,
+    questionNumber: target.question.number,
+  });
+  if (!answer) throw new NotFoundError('No answer has been submitted for this question');
+  if (!answer.imageKey) throw new ConflictError('This answer has no photo to grade again');
+
+  const imageKey = await findPhoto([target.imageKey, answer.imageKey]);
+  const attempt = await startAttempt(target, imageKey);
+  return { target, attempt };
+}

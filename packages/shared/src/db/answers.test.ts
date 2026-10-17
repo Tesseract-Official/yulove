@@ -9,8 +9,10 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   beginAttempt,
+  claimAppeal,
   clearOverride,
   countTranscribeTry,
+  releaseAppeal,
   getAnswer,
   listAnswersForStudent,
   markFailed,
@@ -296,5 +298,41 @@ describe('overrides', () => {
     await clearOverride(key);
 
     expect(lastUpdate().UpdateExpression).toBe('REMOVE #override');
+  });
+});
+
+describe('the open appeal marker', () => {
+  it('claims with a condition that fails if one is open or the answer is missing', async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+    await expect(claimAppeal(key, 'a1')).resolves.toBe(true);
+
+    const input = lastUpdate();
+    expect(input.Key).toEqual(dbKey);
+    expect(input.UpdateExpression).toBe('SET #open = :appealId');
+    expect(input.ConditionExpression).toBe(
+      'attribute_exists(examStudent) AND attribute_not_exists(#open)',
+    );
+    expect(input.ExpressionAttributeNames).toEqual({ '#open': 'openAppealId' });
+
+    ddbMock.on(UpdateCommand).rejects(conditionFailed());
+    await expect(claimAppeal(key, 'a2')).resolves.toBe(false);
+  });
+
+  it('passes other errors through when claiming', async () => {
+    ddbMock.on(UpdateCommand).rejects(new Error('throttled'));
+    await expect(claimAppeal(key, 'a1')).rejects.toThrow('throttled');
+  });
+
+  it("releases only the appeal's own mark, and does not mind if it is gone", async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+    await releaseAppeal(key, 'a1');
+    expect(lastUpdate().UpdateExpression).toBe('REMOVE #open');
+    expect(lastUpdate().ConditionExpression).toBe('#open = :appealId');
+
+    ddbMock.on(UpdateCommand).rejects(conditionFailed());
+    await expect(releaseAppeal(key, 'someone-else')).resolves.toBeUndefined();
+
+    ddbMock.on(UpdateCommand).rejects(new Error('throttled'));
+    await expect(releaseAppeal(key, 'a1')).rejects.toThrow('throttled');
   });
 });

@@ -128,10 +128,24 @@ export const closeAppealBody = z.object({
 });
 export type CloseAppealBody = z.infer<typeof closeAppealBody>;
 
+/** PUT /appeals/{id}: send the answer to be graded again, with an optional note. */
+export const rerunAppealBody = z.object({
+  status: z.literal('RERUN'),
+  note: nonEmptyText(2_000).optional(),
+});
+export type RerunAppealBody = z.infer<typeof rerunAppealBody>;
+
+/** PUT /appeals/{id}: close with a note, or have the answer graded again. */
+export const updateAppealBody = z.discriminatedUnion('status', [closeAppealBody, rerunAppealBody]);
+export type UpdateAppealBody = z.infer<typeof updateAppealBody>;
+
+/** Longest message a student may write in an appeal. */
+export const APPEAL_MESSAGE_MAX = 1_000;
+
 /** POST /appeals. The student comes from the JWT, not the body. */
 export const createAppealBody = z.object({
   examId: id,
   questionNumber: positiveInt,
-  message: nonEmptyText(2_000),
+  message: nonEmptyText(APPEAL_MESSAGE_MAX),
 });
 export type CreateAppealBody = z.infer<typeof createAppealBody>;

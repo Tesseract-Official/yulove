@@ -249,6 +249,86 @@ export const ROUTES: readonly RouteDef[] = [
       queues: { transcribe: 'send' },
     },
   },
+  {
+    method: HttpMethod.POST,
+    path: '/appeals',
+    handler: 'create-appeal',
+    // Checks the exam and the answer, marks the one open appeal on the answer, writes the appeal.
+    permissions: {
+      tables: {
+        Users: 'read',
+        Exams: 'read',
+        ExamStudents: 'read',
+        Answers: 'readWrite',
+        Appeals: 'readWrite',
+      },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/appeals',
+    handler: 'list-appeals',
+    permissions: { tables: { Users: 'read', Exams: 'read', Appeals: 'read' } },
+  },
+  {
+    method: HttpMethod.PUT,
+    path: '/appeals/{id}',
+    handler: 'update-appeal',
+    // Closing needs only the tables; RERUN also grades the answer again (see the rerun route).
+    permissions: {
+      tables: {
+        Users: 'read',
+        Exams: 'read',
+        ExamStudents: 'readWrite',
+        Answers: 'readWrite',
+        Appeals: 'readWrite',
+      },
+      bucket: 'read',
+      bucketPrefix: ANSWERS_ONLY,
+      bucketList: true,
+      queues: { transcribe: 'send' },
+    },
+  },
+  {
+    method: HttpMethod.PUT,
+    path: '/answers/{examId}/{studentEmail}/{q}/override',
+    handler: 'set-override',
+    // Super admins only. Writes the override and the student's new total; the audit entry is the
+    // AuditLog PutItem every route has.
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'readWrite' },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/answers/{examId}/{studentEmail}/{q}/audit',
+    handler: 'get-answer-audit',
+    permissions: { tables: { Users: 'read', Answers: 'read', AuditLog: 'read' } },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/me/exams',
+    handler: 'get-my-exams',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/me/exams/{id}',
+    handler: 'get-my-exam-result',
+    // Questions: only to quote the required complexity of a question the rule zeroed.
+    permissions: {
+      tables: {
+        Users: 'read',
+        Exams: 'read',
+        ExamStudents: 'read',
+        Answers: 'read',
+        Questions: 'read',
+        Appeals: 'read',
+      },
+    },
+  },
 ];
 
 /** Registers every API route on the stack. */

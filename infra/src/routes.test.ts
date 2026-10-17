@@ -116,6 +116,53 @@ const EXPECTED: Expected[] = [
     bucket: { actions: ['s3:GetObject'], pattern: 'answers/*', listBucket: true },
     sendsTo: 'transcribe',
   },
+  {
+    routeKey: 'POST /appeals',
+    tables: {
+      Users: 'read',
+      Exams: 'read',
+      ExamStudents: 'read',
+      Answers: 'readWrite',
+      Appeals: 'readWrite',
+    },
+  },
+  { routeKey: 'GET /appeals', tables: { Users: 'read', Exams: 'read', Appeals: 'read' } },
+  {
+    routeKey: 'PUT /appeals/{id}',
+    tables: {
+      Users: 'read',
+      Exams: 'read',
+      ExamStudents: 'readWrite',
+      Answers: 'readWrite',
+      Appeals: 'readWrite',
+    },
+    bucket: { actions: ['s3:GetObject'], pattern: 'answers/*', listBucket: true },
+    sendsTo: 'transcribe',
+  },
+  {
+    routeKey: 'PUT /answers/{examId}/{studentEmail}/{q}/override',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'readWrite' },
+  },
+  {
+    // The only route that reads the audit log (all of them may append to it).
+    routeKey: 'GET /answers/{examId}/{studentEmail}/{q}/audit',
+    tables: { Users: 'read', Answers: 'read', AuditLog: 'read' },
+  },
+  {
+    routeKey: 'GET /me/exams',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+  },
+  {
+    routeKey: 'GET /me/exams/{id}',
+    tables: {
+      Users: 'read',
+      Exams: 'read',
+      ExamStudents: 'read',
+      Answers: 'read',
+      Questions: 'read',
+      Appeals: 'read',
+    },
+  },
 ];
 
 const TABLES = [
@@ -229,18 +276,34 @@ describe('registered routes', () => {
       const statements = statementsFor(template, routeKey);
       for (const table of TABLES) {
         // Every route may add to the audit log (see the next test); nothing else on it.
-        const want = table === 'AuditLog' ? 'write' : (expected.tables[table] ?? 'none');
+        const want =
+          table === 'AuditLog'
+            ? expected.tables['AuditLog'] === 'read'
+              ? 'readWrite'
+              : 'write'
+            : (expected.tables[table] ?? 'none');
         expect(accessTo(statements, `${table}Table`), table).toBe(want);
       }
     });
 
-    it('can only PutItem on the audit log: no reads, updates, deletes or batch writes', () => {
-      const statements = statementsFor(template, routeKey).filter((s) =>
-        JSON.stringify(s.Resource).includes('AuditLogTable'),
-      );
-      expect(statements.flatMap(actionsOf)).toEqual(['dynamodb:PutItem']);
-      expect(JSON.stringify(statements.map((s) => s.Resource))).not.toContain('index');
-    });
+    it(
+      expected.tables['AuditLog'] === 'read'
+        ? 'can append to the audit log and read it (the one route that may)'
+        : 'can only PutItem on the audit log: no reads, updates, deletes or batch writes',
+      () => {
+        const statements = statementsFor(template, routeKey).filter((s) =>
+          JSON.stringify(s.Resource).includes('AuditLogTable'),
+        );
+        const actions = statements.flatMap(actionsOf);
+        if (expected.tables['AuditLog'] === 'read') {
+          expect(actions).toContain('dynamodb:PutItem');
+          expect(actions.filter((a) => /Update|Delete|BatchWrite/.test(a))).toEqual([]);
+          return;
+        }
+        expect(actions).toEqual(['dynamodb:PutItem']);
+        expect(JSON.stringify(statements.map((s) => s.Resource))).not.toContain('index');
+      },
+    );
 
     it('cannot touch secrets', () => {
       const actions = statementsFor(template, routeKey).flatMap(actionsOf);
@@ -339,12 +402,14 @@ describe('registered routes', () => {
               Exams: 'EXAMS_TABLE',
               ExamStudents: 'EXAM_STUDENTS_TABLE',
               Answers: 'ANSWERS_TABLE',
+              Appeals: 'APPEALS_TABLE',
+              AuditLog: 'AUDIT_LOG_TABLE',
             })[t as 'Users'],
         )
         .sort();
       // The audit log table is on every route (see above).
       expect(vars.filter((v) => v.endsWith('_TABLE')).sort()).toEqual(
-        [...wantedTables, 'AUDIT_LOG_TABLE'].sort(),
+        [...new Set([...wantedTables, 'AUDIT_LOG_TABLE'])].sort(),
       );
       expect(vars.includes('BUCKET_NAME')).toBe(Boolean(expected.bucket));
       expect(vars.includes('TESTGEN_FUNCTION_NAME')).toBe(Boolean(expected.invokesTestGeneration));

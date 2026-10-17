@@ -167,6 +167,8 @@ export interface AnswerItem {
   /** Formula score without any override. */
   score?: number;
   override?: Override;
+  /** The one OPEN appeal on this question, if any (set and cleared atomically). */
+  openAppealId?: string;
   /** Sample data written by a dev script. */
   dev?: boolean;
 }

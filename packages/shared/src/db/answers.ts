@@ -243,3 +243,45 @@ export async function clearOverride(key: AnswerKey): Promise<void> {
     }),
   );
 }
+
+/**
+ * Marks this appeal as the open one on the answer, only if there is none. Returns false when
+ * another appeal is already open (or the answer does not exist), so two appeals raised at the
+ * same moment cannot both open.
+ */
+export async function claimAppeal(key: AnswerKey, appealId: string): Promise<boolean> {
+  try {
+    await docClient().send(
+      new UpdateCommand({
+        TableName: table(),
+        Key: keyOf(key),
+        UpdateExpression: 'SET #open = :appealId',
+        ConditionExpression: 'attribute_exists(examStudent) AND attribute_not_exists(#open)',
+        ExpressionAttributeNames: { '#open': 'openAppealId' },
+        ExpressionAttributeValues: { ':appealId': appealId },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalCheckFailure(error)) return false;
+    throw error;
+  }
+}
+
+/** Clears the open-appeal mark, but only if it is this appeal's. */
+export async function releaseAppeal(key: AnswerKey, appealId: string): Promise<void> {
+  try {
+    await docClient().send(
+      new UpdateCommand({
+        TableName: table(),
+        Key: keyOf(key),
+        UpdateExpression: 'REMOVE #open',
+        ConditionExpression: '#open = :appealId',
+        ExpressionAttributeNames: { '#open': 'openAppealId' },
+        ExpressionAttributeValues: { ':appealId': appealId },
+      }),
+    );
+  } catch (error) {
+    if (!isConditionalCheckFailure(error)) throw error;
+  }
+}

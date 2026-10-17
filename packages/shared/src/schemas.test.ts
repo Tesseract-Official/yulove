@@ -199,3 +199,26 @@ describe('request body schemas', () => {
     expect(parsed).not.toHaveProperty('studentEmail');
   });
 });
+
+describe('appeal bodies', () => {
+  it('a message is required, trimmed and at most 1000 characters', () => {
+    const body = (message: string) =>
+      createAppealBody.safeParse({ examId: 'e1', questionNumber: 1, message });
+    expect(body('x'.repeat(1000)).success).toBe(true);
+    expect(body('x'.repeat(1001)).success).toBe(false);
+    expect(body('   ').success).toBe(false);
+    expect(body('').success).toBe(false);
+    expect(
+      createAppealBody.parse({ examId: 'e1', questionNumber: 1, message: '  hi  ' }).message,
+    ).toBe('hi');
+  });
+
+  it('PUT /appeals takes a closing note or a rerun', async () => {
+    const { updateAppealBody } = await import('./schemas.js');
+    expect(updateAppealBody.safeParse({ status: 'CLOSED', note: 'Checked' }).success).toBe(true);
+    expect(updateAppealBody.safeParse({ status: 'CLOSED' }).success).toBe(false);
+    expect(updateAppealBody.safeParse({ status: 'RERUN' }).success).toBe(true);
+    expect(updateAppealBody.safeParse({ status: 'RERUN', note: 'Re-checking' }).success).toBe(true);
+    expect(updateAppealBody.safeParse({ status: 'OPEN' }).success).toBe(false);
+  });
+});
