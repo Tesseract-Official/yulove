@@ -1,4 +1,11 @@
-import type { CellStatus, FailReason, Verdict } from '@yulove/shared';
+import type {
+  CellStatus,
+  CompareMode,
+  ExamStatus,
+  FailReason,
+  QuestionTestStatus,
+  Verdict,
+} from '@yulove/shared';
 
 /** What each answer status is called on screen. */
 export const STATUS_LABEL: Record<CellStatus, string> = {
@@ -57,3 +64,41 @@ export const isGrading = (status: CellStatus) =>
 /** "1 student", "2 students" */
 export const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
+
+/** The state of a question's tests, in plain words. */
+export type TestState = QuestionTestStatus | 'NONE';
+
+export const TEST_STATE_LABEL: Record<TestState, string> = {
+  NONE: 'Not generated yet',
+  GENERATING: 'Generating',
+  NEEDS_REVIEW: 'Ready for review',
+  APPROVED: 'Approved',
+  GENERATION_FAILED: 'Failed',
+};
+
+export const TEST_STATE_TONE: Record<TestState, Tone> = {
+  NONE: 'neutral',
+  GENERATING: 'progress',
+  NEEDS_REVIEW: 'progress',
+  APPROVED: 'good',
+  GENERATION_FAILED: 'bad',
+};
+
+export const EXAM_STATUS_LABEL: Record<ExamStatus, string> = {
+  DRAFT: 'Draft',
+  READY: 'PDF ready',
+  PUBLISHED: 'Published',
+};
+
+export const EXAM_STATUS_TONE: Record<ExamStatus, Tone> = {
+  DRAFT: 'neutral',
+  READY: 'progress',
+  PUBLISHED: 'good',
+};
+
+/** How a student's output is compared with the expected output, in plain words. */
+export const COMPARE_MODE_LABEL: Record<CompareMode, string> = {
+  EXACT: 'Exactly the same (spaces at the end are ignored)',
+  ANY_ORDER: 'The same items in any order',
+  FLOAT: 'Numbers that match to 6 decimal places',
+};

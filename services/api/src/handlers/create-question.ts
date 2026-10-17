@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { parseBody, questionBody, type QuestionItem } from '@yulove/shared';
+import {
+  parseBody,
+  questionBody,
+  type CreateQuestionResponse,
+  type QuestionItem,
+} from '@yulove/shared';
 import { questionsDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, type ApiEvent, type ApiResult } from '../lib/http.js';
 
@@ -15,7 +20,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     ...body,
   };
   await questionsDb.createQuestion(question);
-  return { status: 201, body: { question } };
+  const response: CreateQuestionResponse = { question };
+  return { status: 201, body: response };
 }
 
 export const handler = apiHandler(handle);

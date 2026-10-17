@@ -35,17 +35,35 @@ export function BackLink({ to, children }: { to: string; children: ReactNode }) 
   );
 }
 
-/** A label and its control (the child is rendered with the label tied to it). */
+/** What a control needs to be tied to its error message. */
+export interface FieldAria {
+  'aria-invalid'?: true;
+  'aria-describedby'?: string;
+}
+
+/**
+ * A label and its control (the child is rendered with the label tied to it), an optional hint and
+ * an optional error message, which is announced with the control.
+ */
 export function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
-  children: (id: string) => ReactNode;
+  error?: string | undefined;
+  children: (id: string, aria: FieldAria) => ReactNode;
 }) {
   const id = useId();
+  const described = [hint ? `${id}-hint` : '', error ? `${id}-error` : '']
+    .filter(Boolean)
+    .join(' ');
+  const aria: FieldAria = {
+    ...(error ? { 'aria-invalid': true as const } : {}),
+    ...(described ? { 'aria-describedby': described } : {}),
+  };
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -54,7 +72,12 @@ export function Field({
           {hint}
         </p>
       ) : null}
-      {children(id)}
+      {children(id, aria)}
+      {error ? (
+        <p className="field-error" id={`${id}-error`}>
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

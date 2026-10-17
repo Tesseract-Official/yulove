@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { examBody, parseBody, type ExamItem, type ExamStudentItem } from '@yulove/shared';
+import {
+  examBody,
+  parseBody,
+  type ExamItem,
+  type ExamStudentItem,
+  type SaveExamResponse,
+} from '@yulove/shared';
 import { examsDb, examStudentsDb, requireUser, usersDb } from '@yulove/shared/server';
 import { resolveExamInputs, toRefs } from '../lib/exams.js';
 import { apiHandler, type ApiEvent, type ApiResult } from '../lib/http.js';
@@ -37,10 +43,11 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     },
   );
 
-  return {
-    status: 201,
-    body: { exam, studentRows: { created: rows.length - pending, pending } },
+  const response: SaveExamResponse = {
+    exam,
+    studentRows: { created: rows.length - pending, pending },
   };
+  return { status: 201, body: response };
 }
 
 export const handler = apiHandler(handle);

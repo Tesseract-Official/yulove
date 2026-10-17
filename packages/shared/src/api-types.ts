@@ -1,5 +1,14 @@
-import type { AnswerStatus, ExamStatus, FailReason, Language, Role, StaffRole } from './enums.js';
-import type { Override, TestVerdict } from './types.js';
+import type {
+  AnswerStatus,
+  CompareMode,
+  ExamStatus,
+  FailReason,
+  Language,
+  QuestionTestStatus,
+  Role,
+  StaffRole,
+} from './enums.js';
+import type { Example, ExamItem, Override, Signature, TestVerdict } from './types.js';
 
 /** Response shapes of the API, shared by the handlers and the web app. Types only. */
 
@@ -44,6 +53,8 @@ export interface ExamSummary {
   date: string;
   status: ExamStatus;
   questionCount: number;
+  /** Email of the teacher who made the exam. */
+  createdBy: string;
 }
 
 /** GET /exams?batchId= */
@@ -175,4 +186,178 @@ export interface AnswerDetailResponse {
   verdicts: TestVerdict[];
   score: number;
   override: Override | undefined;
+}
+
+/** One question in GET /questions: its latest version. */
+export interface QuestionSummary {
+  questionId: string;
+  version: number;
+  title: string;
+  targetComplexity: string;
+  teacherEmail: string;
+  testStatus?: QuestionTestStatus | undefined;
+  testFailure?: string | undefined;
+  /** How many exams use this version. */
+  usedInExams: number;
+}
+
+/** GET /questions */
+export interface QuestionListResponse {
+  questions: QuestionSummary[];
+}
+
+/** A question as the teacher screens see it: what they wrote, and the state of its tests. */
+export interface QuestionDetail {
+  questionId: string;
+  version: number;
+  teacherEmail: string;
+  title: string;
+  statement: string;
+  ioDescription: string;
+  constraints: string;
+  examples: Example[];
+  targetComplexity: string;
+  timeLimitMs: number;
+  memoryMb: number;
+  compareMode: CompareMode;
+  signature?: Signature | undefined;
+  testStatus?: QuestionTestStatus | undefined;
+  testCount?: number | undefined;
+  testFailure?: string | undefined;
+}
+
+/** GET /questions/{id} */
+export interface QuestionDetailResponse {
+  question: QuestionDetail;
+  /** An exam using this version has answers: an edit makes a new version. */
+  inUse: boolean;
+  /** How many exams use this version. */
+  usedInExams: number;
+}
+
+/** POST /questions (201) */
+export interface CreateQuestionResponse {
+  question: QuestionDetail;
+}
+
+/** PUT /questions/{id}: 200 when edited in place, 201 when it made a new version. */
+export interface SaveQuestionResponse {
+  question: QuestionDetail | undefined;
+  newVersion: boolean;
+  /** The generated tests still apply (only the title or examples changed). */
+  testsKept: boolean;
+}
+
+/** POST /questions/{id}/generate-tests (202) */
+export interface GenerateTestsResponse {
+  questionId: string;
+  version: number;
+  testStatus: 'GENERATING';
+  attempt: number;
+}
+
+/** POST /questions/{id}/approve */
+export interface ApproveQuestionResponse {
+  questionId: string;
+  version: number;
+  testStatus: 'APPROVED';
+}
+
+/** One test in the review: input and expected output, each cut to a preview. */
+export interface TestPreview {
+  index: number;
+  kind: 'small' | 'large';
+  input: string;
+  expected: string;
+  /** The input or output was cut because it is very long. */
+  truncated: boolean;
+}
+
+/** GET /questions/{id}/tests */
+export interface QuestionTestsResponse {
+  questionId: string;
+  version: number;
+  testStatus: QuestionTestStatus | null;
+  signature: Signature | null;
+  testFailure?: string;
+  /** Present once the tests are ready for review or approved. */
+  tests?: TestPreview[];
+}
+
+/** One question of an exam in GET /exams/{id}. */
+export interface ExamDetailQuestion {
+  number: number;
+  questionId: string;
+  version: number;
+  marks: number;
+  /** Undefined when that question version no longer exists. */
+  title: string | undefined;
+  testStatus: QuestionTestStatus | undefined;
+  exists: boolean;
+}
+
+/** GET /exams/{id} */
+export interface ExamDetailResponse {
+  exam: {
+    examId: string;
+    batchId: string;
+    title: string;
+    date: string;
+    status: ExamStatus;
+    createdBy: string;
+    publishedAt: string | undefined;
+    questions: ExamDetailQuestion[];
+  };
+  /** Any answer exists: the questions and marks are locked. */
+  hasAnswers: boolean;
+  hasPdf: boolean;
+  /** The caller made the exam (or is a super admin) and it is not published. */
+  canEdit: boolean;
+}
+
+/** POST /exams (201) and PUT /exams/{id} */
+export interface SaveExamResponse {
+  exam: ExamItem;
+  /** PUT only: false when nothing was different. */
+  changed?: boolean;
+  /** POST only: how many student rows were written now, and how many are left for first access. */
+  studentRows?: { created: number; pending: number };
+}
+
+/** POST /exams/{id}/pdf */
+export interface ExamPdfResponse {
+  examId: string;
+  status: ExamStatus;
+  pdfKey: string;
+  pageCount: number;
+}
+
+/** GET /exams/{id}/pdf: a link that works for `expiresInSeconds`. */
+export interface ExamPdfLinkResponse {
+  url: string;
+  expiresInSeconds: number;
+  filename: string;
+}
+
+/** One question of one student in GET /exams/{id}/results. */
+export interface ResultCell extends QuestionCell {
+  failedToGrade: boolean;
+}
+
+/** One student's row in GET /exams/{id}/results. */
+export interface ResultStudentRow extends Omit<BoardStudentRow, 'questions'> {
+  questions: ResultCell[];
+  /** How many of the student's questions could not be graded. */
+  failedToGrade: number;
+}
+
+/** GET /exams/{id}/results */
+export interface ExamResultsResponse {
+  examId: string;
+  title: string;
+  date: string;
+  examStatus: ExamStatus;
+  maxScore: number;
+  questions: Array<{ number: number; marks: number }>;
+  students: ResultStudentRow[];
 }

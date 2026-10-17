@@ -4,6 +4,7 @@ import {
   questionBody,
   testsStillValid,
   type QuestionItem,
+  type SaveQuestionResponse,
 } from '@yulove/shared';
 import { isQuestionVersionFrozen, questionsDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
@@ -42,7 +43,12 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       ...inherited,
     };
     await questionsDb.createQuestion(next); // 409 if someone created this version first
-    return { status: 201, body: { question: next, newVersion: true, testsKept: keepTests } };
+    const created: SaveQuestionResponse = {
+      question: next,
+      newVersion: true,
+      testsKept: keepTests,
+    };
+    return { status: 201, body: created };
   }
 
   const updated = keepTests
@@ -52,10 +58,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     ? await questionsDb.getQuestion(current.questionId, current.version)
     : undefined;
 
-  return {
-    status: 200,
-    body: { question, newVersion: false, testsKept: keepTests },
-  };
+  const saved: SaveQuestionResponse = { question, newVersion: false, testsKept: keepTests };
+  return { status: 200, body: saved };
 }
 
 export const handler = apiHandler(handle);

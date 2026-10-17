@@ -1,4 +1,4 @@
-import { ConflictError } from '@yulove/shared';
+import { ConflictError, type ApproveQuestionResponse } from '@yulove/shared';
 import { questionsDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { loadQuestion } from '../lib/questions.js';
@@ -14,10 +14,12 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       `Only a question in NEEDS_REVIEW can be approved; this one is ${question.testStatus ?? 'not generated yet'}`,
     );
   }
-  return {
-    status: 200,
-    body: { questionId: question.questionId, version: question.version, testStatus: 'APPROVED' },
+  const body: ApproveQuestionResponse = {
+    questionId: question.questionId,
+    version: question.version,
+    testStatus: 'APPROVED',
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

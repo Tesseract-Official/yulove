@@ -1,4 +1,10 @@
-import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  ScanCommand,
+  UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from '../errors.js';
 import type { QuestionItem, Signature } from '../types.js';
 import {
@@ -333,4 +339,18 @@ export function listQuestionsByTeacher(teacherEmail: string): Promise<QuestionIt
     KeyConditionExpression: 'teacherEmail = :teacherEmail',
     ExpressionAttributeValues: { ':teacherEmail': normaliseEmail(teacherEmail) },
   });
+}
+
+/** Every question, all versions. The table is small (one college's questions), so a scan is fine. */
+export async function listAllQuestions(): Promise<QuestionItem[]> {
+  const items: QuestionItem[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await docClient().send(
+      new ScanCommand({ TableName: table(), ExclusiveStartKey: startKey }),
+    );
+    items.push(...((page.Items ?? []) as QuestionItem[]));
+    startKey = page.LastEvaluatedKey;
+  } while (startKey);
+  return items;
 }

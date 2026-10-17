@@ -6,6 +6,18 @@ import { mockApi } from './test/mockApi.js';
 
 const PAGES = {
   admin: ['/admin', '/admin/staff', '/admin/batches'],
+  teacher: [
+    '/teacher',
+    '/teacher/questions',
+    '/teacher/questions/new',
+    '/teacher/questions/q1',
+    '/teacher/questions/q1/tests',
+    '/teacher/exams',
+    '/teacher/exams/new',
+    '/teacher/exams/exam-1',
+    '/teacher/results',
+    '/teacher/answer/exam-1/s1%40college.edu/1',
+  ],
   manager: [
     '/manager',
     '/manager/import',
@@ -21,6 +33,7 @@ function open(role: Role, route: string) {
     'GET /batches': { batches: [{ batchId: 'A', name: 'Batch A' }] },
     'GET /staff': { staff: [] },
     'GET /exams': { exams: [] },
+    'GET /questions': { questions: [] },
   });
   renderApp({ oidc: new FakeOidc(fakeUser()), route });
 }
@@ -79,6 +92,40 @@ describe('who can open the new screens', () => {
   it('keeps a signed-out visitor on the sign-in page', async () => {
     mockApi({});
     renderApp({ route: '/manager/upload' });
+
+    expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument();
+  });
+});
+
+describe('who can open the teacher screens', () => {
+  it.each(
+    PAGES.teacher.flatMap((page) =>
+      (['BATCH_MANAGER', 'STUDENT'] as const).map((role) => [role, page] as const),
+    ),
+  )('keeps a %s out of %s', async (role, page) => {
+    open(role, page);
+
+    const home = { BATCH_MANAGER: '/manager', STUDENT: '/student' }[role];
+    await waitFor(() => expect(location()).toHaveTextContent(home));
+  });
+
+  it.each(PAGES.teacher)('lets a teacher open %s', async (page) => {
+    open('TEACHER', page);
+
+    await waitFor(() => expect(location()).toHaveTextContent(page.split('%')[0] ?? page));
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+  });
+
+  it.each(PAGES.teacher)('lets a super admin open %s too', async (page) => {
+    open('SUPER_ADMIN', page);
+
+    await waitFor(() => expect(location()).toHaveTextContent(page.split('%')[0] ?? page));
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+  });
+
+  it('keeps a signed-out visitor on the sign-in page', async () => {
+    mockApi({});
+    renderApp({ route: '/teacher/exams' });
 
     expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument();
   });

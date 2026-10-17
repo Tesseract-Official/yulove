@@ -35,6 +35,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
         date: exam.date,
         status: exam.status,
         questionCount: exam.questions.length,
+        createdBy: exam.createdBy,
       }))
       .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title)),
   };

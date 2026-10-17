@@ -1,6 +1,6 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { BUCKET_ENV, ConflictError } from '@yulove/shared';
+import { BUCKET_ENV, ConflictError, type ExamPdfLinkResponse } from '@yulove/shared';
 import { requireUser } from '@yulove/shared/server';
 import { loadManagedExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
@@ -41,7 +41,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     }),
     { expiresIn: LINK_SECONDS },
   );
-  return { status: 200, body: { url, expiresInSeconds: LINK_SECONDS, filename } };
+  const body: ExamPdfLinkResponse = { url, expiresInSeconds: LINK_SECONDS, filename };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

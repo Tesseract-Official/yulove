@@ -8,14 +8,21 @@ import { BoardPage } from './features/manager/BoardPage.js';
 import { ImportPage } from './features/manager/ImportPage.js';
 import { ManagerHome } from './features/manager/ManagerHome.js';
 import { UploadPage } from './features/manager/UploadPage.js';
-import { StudentHome, TeacherHome } from './sections/homes.js';
+import { ExamPage } from './features/teacher/ExamPage.js';
+import { ExamsPage } from './features/teacher/ExamsPage.js';
+import { QuestionFormPage } from './features/teacher/QuestionFormPage.js';
+import { QuestionsPage } from './features/teacher/QuestionsPage.js';
+import { QuestionTestsPage } from './features/teacher/QuestionTestsPage.js';
+import { ResultsPage } from './features/teacher/ResultsPage.js';
+import { TeacherHome } from './features/teacher/TeacherHome.js';
+import { StudentHome } from './sections/homes.js';
 import { RequireSection } from './session/guards.js';
 import { SessionGate } from './session/SessionGate.js';
 import { Shell } from './ui/Shell.js';
 
 /**
  * `/` and `/auth/callback` are public. Everything else sits behind SessionGate, and each section
- * additionally behind a role check. The teacher and student sections are still placeholders.
+ * additionally behind a role check. The student section is still a placeholder.
  */
 export function AppRoutes() {
   return (
@@ -45,6 +52,15 @@ export function AppRoutes() {
         </Route>
         <Route path="teacher" element={<RequireSection section="TEACHER" />}>
           <Route index element={<TeacherHome />} />
+          <Route path="questions" element={<QuestionsPage />} />
+          <Route path="questions/new" element={<QuestionFormPage />} />
+          <Route path="questions/:id" element={<QuestionFormPage />} />
+          <Route path="questions/:id/tests" element={<QuestionTestsPage />} />
+          <Route path="exams" element={<ExamsPage />} />
+          <Route path="exams/new" element={<ExamPage />} />
+          <Route path="exams/:id" element={<ExamPage />} />
+          <Route path="results" element={<ResultsPage />} />
+          <Route path="answer/:examId/:email/:q" element={<AnswerPage section="teacher" />} />
           <Route path="*" element={<Navigate to="/teacher" replace />} />
         </Route>
         <Route path="student" element={<RequireSection section="STUDENT" />}>

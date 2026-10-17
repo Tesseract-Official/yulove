@@ -33,6 +33,21 @@ const EXPECTED: Expected[] = [
     collegeDomain: true,
   },
   { routeKey: 'GET /batches/{batchId}/students', tables: { Users: 'read', Batches: 'read' } },
+  { routeKey: 'GET /questions', tables: { Users: 'read', Questions: 'read', Exams: 'read' } },
+  {
+    routeKey: 'GET /questions/{id}',
+    tables: { Users: 'read', Questions: 'read', Exams: 'read', Answers: 'read' },
+  },
+  {
+    routeKey: 'GET /exams/{id}',
+    tables: {
+      Users: 'read',
+      Exams: 'read',
+      ExamStudents: 'read',
+      Answers: 'read',
+      Questions: 'read',
+    },
+  },
   { routeKey: 'POST /questions', tables: { Users: 'read', Questions: 'write' } },
   {
     routeKey: 'PUT /questions/{id}',

@@ -8,15 +8,16 @@ import { FAIL_REASON_TEXT, LANGUAGE_TEXT, VERDICT_TEXT } from '../common/labels.
 import { Chip, Notice, PageHeader, StatusChip } from '../common/ui.js';
 
 /** Batch manager: one answer in full: the photo, what was read from it, and how each test went. */
-export function AnswerPage() {
+export function AnswerPage({ section = 'manager' }: { section?: 'manager' | 'teacher' }) {
   const { examId = '', email = '', q = '' } = useParams();
   const [params] = useSearchParams();
   const question = Number(q);
   const api = useApi();
   const queryClient = useQueryClient();
 
-  const backTo = `/manager/board?exam=${encodeURIComponent(examId)}${
-    params.get('batch') ? `&batch=${encodeURIComponent(params.get('batch') ?? '')}` : ''
+  const batch = params.get('batch');
+  const backTo = `/${section}/${section === 'teacher' ? 'results' : 'board'}?exam=${encodeURIComponent(examId)}${
+    batch ? `&batch=${encodeURIComponent(batch)}` : ''
   }`;
 
   const answer = useQuery({
@@ -41,7 +42,7 @@ export function AnswerPage() {
       title={`Question ${q}`}
       intro={email}
       backTo={backTo}
-      backLabel="Back to the board"
+      backLabel={section === 'teacher' ? 'Back to the results' : 'Back to the board'}
     />
   );
 

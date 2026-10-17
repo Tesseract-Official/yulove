@@ -41,6 +41,7 @@ describe('GET /exams', () => {
         date: '2026-10-24',
         status: 'READY',
         questionCount: 2,
+        createdBy: TEACHER_A,
       },
       {
         examId: 'exam-0',
@@ -49,6 +50,7 @@ describe('GET /exams', () => {
         date: '2026-10-17',
         status: 'PUBLISHED',
         questionCount: 1,
+        createdBy: TEACHER_A,
       },
     ]);
   });

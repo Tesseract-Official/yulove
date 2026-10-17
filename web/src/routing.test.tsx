@@ -36,8 +36,8 @@ describe('routing by role', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument();
     expect(location()).toHaveTextContent(path);
-    // The teacher and student homes are still placeholders that list the user's batches.
-    if (role === 'TEACHER' || role === 'STUDENT') {
+    // The student home is still a placeholder that lists the user's batches.
+    if (role === 'STUDENT') {
       expect(screen.getByText('Batch Alpha')).toBeInTheDocument();
     }
   });
@@ -56,9 +56,9 @@ describe('routing by role', () => {
   });
 
   it('shows an empty state for a user with no batches', async () => {
-    stubApi(() => jsonResponse(meFor('TEACHER', { batches: [] })));
+    stubApi(() => jsonResponse(meFor('STUDENT', { batches: [] })));
 
-    renderApp({ oidc: signedIn(), route: '/teacher' });
+    renderApp({ oidc: signedIn(), route: '/student' });
 
     expect(await screen.findByText('No batches yet')).toBeInTheDocument();
   });

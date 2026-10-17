@@ -1,3 +1,4 @@
+import type { ExamResultsResponse, ResultStudentRow } from '@yulove/shared';
 import { requireUser } from '@yulove/shared/server';
 import { loadExamStudents, studentRow } from '../lib/board.js';
 import { loadExamInBatch } from '../lib/exams.js';
@@ -12,7 +13,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
   const exam = await loadExamInBatch(ctx, pathParam(event, 'id'));
 
-  const students = (await loadExamStudents(exam)).map((s) => {
+  const students: ResultStudentRow[] = (await loadExamStudents(exam)).map((s) => {
     const row = studentRow(exam, s);
     return {
       ...row,
@@ -24,18 +25,16 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     };
   });
 
-  return {
-    status: 200,
-    body: {
-      examId: exam.examId,
-      title: exam.title,
-      date: exam.date,
-      examStatus: exam.status,
-      maxScore: students[0]?.maxScore ?? exam.questions.reduce((sum, q) => sum + q.marks, 0),
-      questions: exam.questions.map((q) => ({ number: q.number, marks: q.marks })),
-      students,
-    },
+  const body: ExamResultsResponse = {
+    examId: exam.examId,
+    title: exam.title,
+    date: exam.date,
+    examStatus: exam.status,
+    maxScore: students[0]?.maxScore ?? exam.questions.reduce((sum, q) => sum + q.marks, 0),
+    questions: exam.questions.map((q) => ({ number: q.number, marks: q.marks })),
+    students,
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

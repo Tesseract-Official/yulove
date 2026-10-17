@@ -86,6 +86,35 @@ export const ROUTES: readonly RouteDef[] = [
     permissions: { tables: { Users: 'read', Batches: 'read' } },
   },
   {
+    method: HttpMethod.GET,
+    path: '/questions',
+    handler: 'list-questions',
+    // Exams: to count how many exams use each question.
+    permissions: { tables: { Users: 'read', Questions: 'read', Exams: 'read' } },
+  },
+  {
+    // Exams and Answers: to find out whether an exam that uses it has answers (an edit then makes a new version).
+    method: HttpMethod.GET,
+    path: '/questions/{id}',
+    handler: 'get-question',
+    permissions: { tables: { Users: 'read', Questions: 'read', Exams: 'read', Answers: 'read' } },
+  },
+  {
+    // ExamStudents and Answers: whether any answer exists (the questions and marks are then locked).
+    method: HttpMethod.GET,
+    path: '/exams/{id}',
+    handler: 'get-exam',
+    permissions: {
+      tables: {
+        Users: 'read',
+        Exams: 'read',
+        ExamStudents: 'read',
+        Answers: 'read',
+        Questions: 'read',
+      },
+    },
+  },
+  {
     method: HttpMethod.POST,
     path: '/questions',
     handler: 'create-question',

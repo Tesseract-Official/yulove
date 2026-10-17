@@ -30,15 +30,6 @@ function PlaceholderHome({ title, intro }: { title: string; intro: string }) {
   );
 }
 
-export function TeacherHome() {
-  return (
-    <PlaceholderHome
-      title="Teacher"
-      intro="Questions, exams, results and appeals will live here."
-    />
-  );
-}
-
 export function StudentHome() {
   return (
     <PlaceholderHome title="Student" intro="Your published results and appeals will live here." />

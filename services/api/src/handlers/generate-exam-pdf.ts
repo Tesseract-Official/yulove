@@ -1,5 +1,5 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { BUCKET_ENV, ConflictError } from '@yulove/shared';
+import { BUCKET_ENV, ConflictError, type ExamPdfResponse } from '@yulove/shared';
 import { batchesDb, examsDb, requireUser } from '@yulove/shared/server';
 import { renderExamPdf } from '../lib/exam-pdf.js';
 import { loadManagedExam, loadQuestionVersions, sameQuestions } from '../lib/exams.js';
@@ -62,7 +62,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
 
   const status = exam.status === 'PUBLISHED' ? 'PUBLISHED' : 'READY';
   await examsDb.updateExam(exam.examId, { pdfKey, status });
-  return { status: 200, body: { examId: exam.examId, status, pdfKey, pageCount } };
+  const body: ExamPdfResponse = { examId: exam.examId, status, pdfKey, pageCount };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

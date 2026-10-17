@@ -1,5 +1,10 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { ConflictError, NotFoundError, TESTGEN_FUNCTION_ENV } from '@yulove/shared';
+import {
+  ConflictError,
+  NotFoundError,
+  TESTGEN_FUNCTION_ENV,
+  type GenerateTestsResponse,
+} from '@yulove/shared';
 import { isQuestionVersionFrozen, questionsDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { loadQuestion } from '../lib/questions.js';
@@ -47,10 +52,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     throw error;
   }
 
-  return {
-    status: 202,
-    body: { questionId, version, testStatus: 'GENERATING', attempt },
-  };
+  const body: GenerateTestsResponse = { questionId, version, testStatus: 'GENERATING', attempt };
+  return { status: 202, body };
 }
 
 export const handler = apiHandler(handle);

@@ -1,5 +1,12 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { BUCKET_ENV, questionKeys, testsFileSchema, type QuestionItem } from '@yulove/shared';
+import {
+  BUCKET_ENV,
+  questionKeys,
+  testsFileSchema,
+  type QuestionItem,
+  type QuestionTestsResponse,
+  type TestPreview,
+} from '@yulove/shared';
 import { requireUser } from '@yulove/shared/server';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { loadQuestion } from '../lib/questions.js';
@@ -35,7 +42,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
   const question = await loadQuestion(ctx, pathParam(event, 'id'));
 
-  const summary = {
+  const summary: QuestionTestsResponse = {
     questionId: question.questionId,
     version: question.version,
     testStatus: question.testStatus ?? null,
@@ -52,7 +59,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   if (raw === undefined) return { status: 200, body: summary };
 
   const file = testsFileSchema.parse(raw);
-  const tests = file.tests
+  const tests: TestPreview[] = file.tests
     .sort((a, b) => a.index - b.index)
     .map((t) => {
       const input = cut(t.input);

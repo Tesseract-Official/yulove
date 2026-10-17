@@ -1,17 +1,31 @@
 import type {
   AnswerDetailResponse,
+  ApproveQuestionResponse,
   AssignBatchesResponse,
   BatchListResponse,
   CreateBatchBody,
   CreateBatchResponse,
+  CreateQuestionResponse,
   CreateStaffInput,
   CreateStaffResponse,
   ExamBoardResponse,
+  ExamBody,
+  ExamDetailResponse,
   ExamListResponse,
+  ExamPdfLinkResponse,
+  ExamPdfResponse,
+  ExamResultsResponse,
+  GenerateTestsResponse,
   ImportStudentsResponse,
   MeResponse,
   PublishResponse,
+  QuestionBody,
+  QuestionDetailResponse,
+  QuestionListResponse,
+  QuestionTestsResponse,
   RequestUploadUrlBody,
+  SaveExamResponse,
+  SaveQuestionResponse,
   SetAbsentResponse,
   StaffListResponse,
   SubmitAnswerBody,
@@ -43,7 +57,9 @@ export function createEndpoints(client: ApiClient) {
       client.put<AssignBatchesResponse>(`/staff/${enc(email)}/batches`, { batchIds }),
 
     // Batch manager
-    listExams: (batchId: string) => client.get<ExamListResponse>('/exams', { batchId }),
+    /** Without a batch: the exams of every batch the caller works with. */
+    listExams: (batchId?: string) =>
+      client.get<ExamListResponse>('/exams', batchId ? { batchId } : undefined),
     importStudents: (batchId: string, csv: string) =>
       client.post<ImportStudentsResponse>(`/batches/${enc(batchId)}/students/import`, { csv }),
     getBoard: (examId: string) => client.get<ExamBoardResponse>(`/exams/${enc(examId)}/answers`),
@@ -64,6 +80,29 @@ export function createEndpoints(client: ApiClient) {
     /** `confirm: true` publishes even though some answers are still being graded. */
     publishExam: (examId: string, confirm = false) =>
       client.post<PublishResponse>(`/exams/${enc(examId)}/publish`, confirm ? { confirm } : {}),
+
+    // Teacher
+    listQuestions: () => client.get<QuestionListResponse>('/questions'),
+    getQuestion: (questionId: string) =>
+      client.get<QuestionDetailResponse>(`/questions/${enc(questionId)}`),
+    createQuestion: (body: QuestionBody) => client.post<CreateQuestionResponse>('/questions', body),
+    updateQuestion: (questionId: string, body: QuestionBody) =>
+      client.put<SaveQuestionResponse>(`/questions/${enc(questionId)}`, body),
+    generateTests: (questionId: string) =>
+      client.post<GenerateTestsResponse>(`/questions/${enc(questionId)}/generate-tests`),
+    getQuestionTests: (questionId: string) =>
+      client.get<QuestionTestsResponse>(`/questions/${enc(questionId)}/tests`),
+    approveQuestion: (questionId: string) =>
+      client.post<ApproveQuestionResponse>(`/questions/${enc(questionId)}/approve`),
+    getExam: (examId: string) => client.get<ExamDetailResponse>(`/exams/${enc(examId)}`),
+    createExam: (body: ExamBody) => client.post<SaveExamResponse>('/exams', body),
+    updateExam: (examId: string, body: ExamBody) =>
+      client.put<SaveExamResponse>(`/exams/${enc(examId)}`, body),
+    generateExamPdf: (examId: string) => client.post<ExamPdfResponse>(`/exams/${enc(examId)}/pdf`),
+    getExamPdfLink: (examId: string) =>
+      client.get<ExamPdfLinkResponse>(`/exams/${enc(examId)}/pdf`),
+    getExamResults: (examId: string) =>
+      client.get<ExamResultsResponse>(`/exams/${enc(examId)}/results`),
   };
 }
 export type Endpoints = ReturnType<typeof createEndpoints>;

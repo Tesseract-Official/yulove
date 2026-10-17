@@ -1,4 +1,11 @@
-import { ConflictError, examBody, parseBody, ValidationError, type ExamItem } from '@yulove/shared';
+import {
+  ConflictError,
+  examBody,
+  parseBody,
+  ValidationError,
+  type ExamItem,
+  type SaveExamResponse,
+} from '@yulove/shared';
 import { examHasAnswers, examsDb, requireUser } from '@yulove/shared/server';
 import { loadManagedExam, resolveExamInputs, sameQuestions, toRefs } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
@@ -23,7 +30,10 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const questions = toRefs(body.questions);
   const questionsChanged = !sameQuestions(exam.questions, questions);
   const changed = questionsChanged || body.title !== exam.title || body.date !== exam.date;
-  if (!changed) return { status: 200, body: { exam, changed: false } };
+  if (!changed) {
+    const unchanged: SaveExamResponse = { exam, changed: false };
+    return { status: 200, body: unchanged };
+  }
 
   if (questionsChanged) {
     if (await examHasAnswers(exam.examId, exam.batchId)) {
@@ -47,7 +57,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     status: 'DRAFT',
   };
   delete updated.pdfKey; // the stored exam no longer has it either
-  return { status: 200, body: { exam: updated, changed: true } };
+  const saved: SaveExamResponse = { exam: updated, changed: true };
+  return { status: 200, body: saved };
 }
 
 export const handler = apiHandler(handle);
