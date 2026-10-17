@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, type ChangeEvent } from 'react';
+import { useState } from 'react';
 import type { BoardStudentRow, CellStatus, QuestionCell } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { errorMessage } from '../../api/errors.js';
@@ -7,6 +7,7 @@ import { postToS3 } from '../../imaging/upload.js';
 import { keys } from '../common/hooks.js';
 import { STATUS_LABEL, hasPhoto, plural } from '../common/labels.js';
 import { Notice, StatusChip } from '../common/ui.js';
+import { PhotoInputs } from '../common/PhotoInputs.js';
 import { PhotoCropper } from './PhotoCropper.js';
 import { useSetAbsent } from './StudentPicker.js';
 
@@ -98,14 +99,10 @@ export function StudentUpload({
     setQuestion(number);
   };
 
-  const chosen = (event: ChangeEvent<HTMLInputElement>) => {
-    const picked = event.target.files?.[0];
-    event.target.value = ''; // so choosing the same photo again still counts
-    if (picked) {
-      send.reset();
-      setJustSent(undefined);
-      setFile(picked);
-    }
+  const pickPhoto = (picked: File) => {
+    send.reset();
+    setJustSent(undefined);
+    setFile(picked);
   };
 
   const header = (
@@ -229,22 +226,7 @@ export function StudentUpload({
                   A new photo replaces the old one, and the answer is graded again.
                 </Notice>
               ) : null}
-              <div className="capture">
-                <label className="button button-primary file-button">
-                  Take a photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={chosen}
-                  />
-                </label>
-                <label className="button file-button">
-                  Choose a file
-                  <input type="file" accept="image/*" className="sr-only" onChange={chosen} />
-                </label>
-              </div>
+              <PhotoInputs onPick={pickPhoto} />
               {replacing ? (
                 <button
                   type="button"

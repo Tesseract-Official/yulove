@@ -4,6 +4,7 @@ import {
   MESSAGES,
   studentQuestionView,
   type AppealItem,
+  type MyExamResultResponse,
 } from '@yulove/shared';
 import {
   answersDb,
@@ -64,19 +65,17 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   });
 
   const total = totalFor(exam, answers, absent);
-  return {
-    status: 200,
-    body: {
-      examId: exam.examId,
-      title: exam.title,
-      date: exam.date,
-      absent,
-      ...(absent ? { message: MESSAGES.absent } : {}),
-      totalScore: total.totalScore,
-      maxScore: total.maxScore,
-      questions,
-    },
+  const body: MyExamResultResponse = {
+    examId: exam.examId,
+    title: exam.title,
+    date: exam.date,
+    absent,
+    ...(absent ? { message: MESSAGES.absent } : {}),
+    totalScore: total.totalScore,
+    maxScore: total.maxScore,
+    questions,
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

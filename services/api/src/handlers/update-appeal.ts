@@ -4,6 +4,7 @@ import {
   parseBody,
   updateAppealBody,
   type AppealItem,
+  type UpdateAppealResponse,
 } from '@yulove/shared';
 import { answersDb, appealsDb, requireUser } from '@yulove/shared/server';
 import { rerunAnswer } from '../lib/answers.js';
@@ -49,7 +50,11 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   await answersDb.releaseAppeal(key, appeal.appealId);
 
   const updated: AppealItem = { ...appeal, ...changes, handledBy: ctx.user.email };
-  return { status: 200, body: { appeal: updated, ...(attempt !== undefined ? { attempt } : {}) } };
+  const response: UpdateAppealResponse = {
+    appeal: updated,
+    ...(attempt !== undefined ? { attempt } : {}),
+  };
+  return { status: 200, body: response };
 }
 
 export const handler = apiHandler(handle);

@@ -1,9 +1,14 @@
 import type {
   AnswerDetailResponse,
   ApproveQuestionResponse,
+  AppealListResponse,
+  AppealStatus,
   AssignBatchesResponse,
+  AuditHistoryResponse,
   BatchListResponse,
   CreateBatchBody,
+  CreateAppealBody,
+  CreateAppealResponse,
   CreateBatchResponse,
   CreateQuestionResponse,
   CreateStaffInput,
@@ -18,6 +23,9 @@ import type {
   GenerateTestsResponse,
   ImportStudentsResponse,
   MeResponse,
+  MyExamResultResponse,
+  MyExamsResponse,
+  OverrideBody,
   PublishResponse,
   QuestionBody,
   QuestionDetailResponse,
@@ -27,9 +35,12 @@ import type {
   SaveExamResponse,
   SaveQuestionResponse,
   SetAbsentResponse,
+  SetOverrideResponse,
   StaffListResponse,
   SubmitAnswerBody,
   SubmitAnswerResponse,
+  UpdateAppealBody,
+  UpdateAppealResponse,
   UploadUrlResponse,
 } from '@yulove/shared';
 import type { ApiClient } from './client.js';
@@ -103,6 +114,31 @@ export function createEndpoints(client: ApiClient) {
       client.get<ExamPdfLinkResponse>(`/exams/${enc(examId)}/pdf`),
     getExamResults: (examId: string) =>
       client.get<ExamResultsResponse>(`/exams/${enc(examId)}/results`),
+
+    // Appeal review
+    listAppeals: (examId: string, status?: AppealStatus) =>
+      client.get<AppealListResponse>('/appeals', { examId, status }),
+    updateAppeal: (appealId: string, body: UpdateAppealBody) =>
+      client.put<UpdateAppealResponse>(`/appeals/${enc(appealId)}`, body),
+
+    // Super admin
+    setOverride: (
+      examId: string,
+      studentEmail: string,
+      questionNumber: number,
+      body: OverrideBody,
+    ) =>
+      client.put<SetOverrideResponse>(
+        `${answerPath(examId, studentEmail, questionNumber)}/override`,
+        body,
+      ),
+    getAnswerAudit: (examId: string, studentEmail: string, questionNumber: number) =>
+      client.get<AuditHistoryResponse>(`${answerPath(examId, studentEmail, questionNumber)}/audit`),
+
+    // Student
+    getMyExams: () => client.get<MyExamsResponse>('/me/exams'),
+    getMyExam: (examId: string) => client.get<MyExamResultResponse>(`/me/exams/${enc(examId)}`),
+    createAppeal: (body: CreateAppealBody) => client.post<CreateAppealResponse>('/appeals', body),
   };
 }
 export type Endpoints = ReturnType<typeof createEndpoints>;

@@ -13,6 +13,11 @@ export const keys = {
   question: (questionId: string) => ['question', questionId] as const,
   questionTests: (questionId: string) => ['question-tests', questionId] as const,
   results: (examId: string) => ['results', examId] as const,
+  appeals: (examId: string) => ['appeals', examId] as const,
+  audit: (examId: string, email: string, question: number) =>
+    ['audit', examId, email, question] as const,
+  myExams: ['my-exams'] as const,
+  myExam: (examId: string) => ['my-exam', examId] as const,
   answer: (examId: string, email: string, question: number) =>
     ['answer', examId, email, question] as const,
 };
@@ -105,5 +110,27 @@ export function useResults(examId: string | undefined) {
     queryFn: () => api.getExamResults(examId ?? ''),
     enabled: Boolean(examId),
     meta,
+  });
+}
+
+/** Every appeal of an exam, newest first (the page filters and orders them). */
+export function useAppeals(examId: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.appeals(examId ?? ''),
+    queryFn: async () => (await api.listAppeals(examId ?? '')).appeals,
+    enabled: Boolean(examId),
+    meta,
+  });
+}
+
+export function useAnswer(examId: string, email: string, question: number) {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.answer(examId, email, question),
+    queryFn: () => api.getAnswer(examId, email, question),
+    enabled: Boolean(examId && email && question),
+    meta,
+    retry: false,
   });
 }

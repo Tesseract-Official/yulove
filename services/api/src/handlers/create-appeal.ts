@@ -6,6 +6,7 @@ import {
   parseBody,
   ValidationError,
   type AppealItem,
+  type CreateAppealResponse,
 } from '@yulove/shared';
 import { answersDb, appealsDb, examStudentsDb, requireUser } from '@yulove/shared/server';
 import { loadPublishedExam } from '../lib/student.js';
@@ -58,7 +59,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     throw error;
   }
 
-  return { status: 201, body: { appeal } };
+  const response: CreateAppealResponse = { appeal };
+  return { status: 201, body: response };
 }
 
 /**

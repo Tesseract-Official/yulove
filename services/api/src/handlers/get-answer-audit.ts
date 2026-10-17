@@ -1,4 +1,9 @@
-import { normaliseEmail, NotFoundError } from '@yulove/shared';
+import {
+  normaliseEmail,
+  NotFoundError,
+  type AuditEntry,
+  type AuditHistoryResponse,
+} from '@yulove/shared';
 import { answerEntityKey, answersDb, auditLogDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { questionParam } from './get-answer.js';
@@ -17,7 +22,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   if (!answer) throw new NotFoundError('No answer has been submitted for this question');
 
   const history = await auditLogDb.listAuditForEntity(answerEntityKey(examId, email, number));
-  const entries = history
+  const entries: AuditEntry[] = history
     .map(({ timestamp, actor, action, before, after, reason }) => ({
       timestamp,
       actor,
@@ -28,7 +33,13 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     }))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-  return { status: 200, body: { examId, studentEmail: email, questionNumber: number, entries } };
+  const body: AuditHistoryResponse = {
+    examId,
+    studentEmail: email,
+    questionNumber: number,
+    entries,
+  };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

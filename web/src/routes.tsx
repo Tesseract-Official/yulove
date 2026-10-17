@@ -15,14 +15,17 @@ import { QuestionsPage } from './features/teacher/QuestionsPage.js';
 import { QuestionTestsPage } from './features/teacher/QuestionTestsPage.js';
 import { ResultsPage } from './features/teacher/ResultsPage.js';
 import { TeacherHome } from './features/teacher/TeacherHome.js';
-import { StudentHome } from './sections/homes.js';
+import { AppealDetailPage } from './features/appeals/AppealDetailPage.js';
+import { AppealsPage } from './features/appeals/AppealsPage.js';
+import { StudentExamPage } from './features/student/StudentExamPage.js';
+import { StudentExamsPage } from './features/student/StudentExamsPage.js';
 import { RequireSection } from './session/guards.js';
 import { SessionGate } from './session/SessionGate.js';
 import { Shell } from './ui/Shell.js';
 
 /**
  * `/` and `/auth/callback` are public. Everything else sits behind SessionGate, and each section
- * additionally behind a role check. The student section is still a placeholder.
+ * additionally behind a role check.
  */
 export function AppRoutes() {
   return (
@@ -47,6 +50,11 @@ export function AppRoutes() {
           <Route path="import" element={<ImportPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="board" element={<BoardPage />} />
+          <Route path="appeals" element={<AppealsPage section="manager" />} />
+          <Route
+            path="appeals/:examId/:appealId"
+            element={<AppealDetailPage section="manager" />}
+          />
           <Route path="answer/:examId/:email/:q" element={<AnswerPage />} />
           <Route path="*" element={<Navigate to="/manager" replace />} />
         </Route>
@@ -60,11 +68,17 @@ export function AppRoutes() {
           <Route path="exams/new" element={<ExamPage />} />
           <Route path="exams/:id" element={<ExamPage />} />
           <Route path="results" element={<ResultsPage />} />
+          <Route path="appeals" element={<AppealsPage section="teacher" />} />
+          <Route
+            path="appeals/:examId/:appealId"
+            element={<AppealDetailPage section="teacher" />}
+          />
           <Route path="answer/:examId/:email/:q" element={<AnswerPage section="teacher" />} />
           <Route path="*" element={<Navigate to="/teacher" replace />} />
         </Route>
         <Route path="student" element={<RequireSection section="STUDENT" />}>
-          <Route index element={<StudentHome />} />
+          <Route index element={<StudentExamsPage />} />
+          <Route path="exams/:id" element={<StudentExamPage />} />
           <Route path="*" element={<Navigate to="/student" replace />} />
         </Route>
       </Route>

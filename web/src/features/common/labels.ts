@@ -1,4 +1,5 @@
 import type {
+  AppealStatus,
   CellStatus,
   CompareMode,
   ExamStatus,
@@ -101,4 +102,34 @@ export const COMPARE_MODE_LABEL: Record<CompareMode, string> = {
   EXACT: 'Exactly the same (spaces at the end are ignored)',
   ANY_ORDER: 'The same items in any order',
   FLOAT: 'Numbers that match to 6 decimal places',
+};
+
+/** How a failed test is put to a student: short and plain. */
+export const STUDENT_VERDICT_TEXT: Record<Verdict, string> = {
+  AC: 'passed',
+  WA: 'wrong answer',
+  TLE: 'too slow',
+  MLE: 'used too much memory',
+  RE: 'crashed',
+  CE: 'did not compile',
+};
+
+/** An appeal, as the staff who review it see it. */
+export const APPEAL_STATUS_LABEL: Record<AppealStatus, string> = {
+  OPEN: 'Open',
+  RERUN: 'Graded again',
+  CLOSED: 'Closed',
+};
+
+export const APPEAL_STATUS_TONE: Record<AppealStatus, Tone> = {
+  OPEN: 'bad',
+  RERUN: 'progress',
+  CLOSED: 'neutral',
+};
+
+/** An appeal, as the student who sent it sees it. */
+export const STUDENT_APPEAL_TEXT: Record<AppealStatus, string> = {
+  OPEN: 'Waiting for a reviewer',
+  RERUN: 'Your answer was graded again',
+  CLOSED: 'Closed',
 };

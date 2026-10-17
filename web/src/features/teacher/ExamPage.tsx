@@ -6,7 +6,7 @@ import { useApi } from '../../api/ApiContext.js';
 import { errorMessage } from '../../api/errors.js';
 import { useCurrentUser } from '../../session/MeContext.js';
 import { ErrorState, Loading } from '../../ui/states.js';
-import { startDownload } from '../common/download.js';
+import { DownloadPdfButton } from '../common/DownloadPdfButton.js';
 import {
   DEFAULT_MARKS,
   moveItem,
@@ -106,12 +106,6 @@ function ExamEditor({ detail }: { detail?: ExamDetailResponse }) {
         queryClient.invalidateQueries({ queryKey: keys.allExams }),
       ]);
     },
-  });
-
-  const download = useMutation({
-    mutationFn: () => api.getExamPdfLink(exam?.examId ?? ''),
-    meta: { errorToast: false },
-    onSuccess: (link) => startDownload(link.url, link.filename),
   });
 
   const submit = (event: FormEvent) => {
@@ -355,47 +349,37 @@ function ExamEditor({ detail }: { detail?: ExamDetailResponse }) {
       {exam ? (
         <section className="pdf-box">
           <h2>The exam paper (PDF)</h2>
+          <p className="muted">
+            {detail?.hasPdf ? 'A PDF has been made for this exam.' : 'No PDF has been made yet.'}
+            {mine ? ' Making it can take up to half a minute.' : ''}
+          </p>
+          {dirty && !readOnly ? (
+            <p className="muted">Save your changes first, so the PDF matches them.</p>
+          ) : null}
+          <div className="actions">
+            {mine ? (
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={makePdf.isPending || (dirty && !readOnly)}
+                onClick={() => makePdf.mutate()}
+              >
+                {makePdf.isPending
+                  ? 'Making the PDF…'
+                  : detail?.hasPdf
+                    ? 'Make the PDF again'
+                    : 'Generate PDF'}
+              </button>
+            ) : null}
+            <DownloadPdfButton
+              examId={exam.examId}
+              disabled={!detail?.hasPdf || (dirty && !readOnly)}
+            />
+          </div>
           {!mine ? (
-            <p className="muted">Only {exam.createdBy} can make or download the PDF.</p>
-          ) : (
-            <>
-              <p className="muted">
-                {detail?.hasPdf
-                  ? 'A PDF has been made for this exam.'
-                  : 'No PDF has been made yet.'}{' '}
-                Making it can take up to half a minute.
-              </p>
-              {dirty && !readOnly ? (
-                <p className="muted">Save your changes first, so the PDF matches them.</p>
-              ) : null}
-              <div className="actions">
-                <button
-                  type="button"
-                  className="button button-primary"
-                  disabled={makePdf.isPending || (dirty && !readOnly)}
-                  onClick={() => makePdf.mutate()}
-                >
-                  {makePdf.isPending
-                    ? 'Making the PDF…'
-                    : detail?.hasPdf
-                      ? 'Make the PDF again'
-                      : 'Generate PDF'}
-                </button>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={!detail?.hasPdf || download.isPending || (dirty && !readOnly)}
-                  onClick={() => download.mutate()}
-                >
-                  {download.isPending ? 'Getting the link…' : 'Download PDF'}
-                </button>
-              </div>
-              {makePdf.isError ? <Notice kind="error">{errorMessage(makePdf.error)}</Notice> : null}
-              {download.isError ? (
-                <Notice kind="error">{errorMessage(download.error)}</Notice>
-              ) : null}
-            </>
-          )}
+            <p className="muted">Only {exam.createdBy} can make the PDF. You can download it.</p>
+          ) : null}
+          {makePdf.isError ? <Notice kind="error">{errorMessage(makePdf.error)}</Notice> : null}
           {exam.status !== 'DRAFT' ? (
             <p>
               <Link

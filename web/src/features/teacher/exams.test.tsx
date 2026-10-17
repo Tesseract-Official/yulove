@@ -401,9 +401,17 @@ describe('an exam that is published, or made by someone else', () => {
     expect(screen.getByRole('button', { name: 'Download PDF' })).toBeEnabled();
   });
 
-  it('is read-only for another teacher, who also cannot make its PDF', async () => {
-    open(`/teacher/exams/${EXAM_ID}`, {
-      'GET /exams/:id': examDetail({ createdBy: 'other@college.edu' }, { canEdit: false }),
+  it('is read-only for another teacher, who can download the PDF but not make it', async () => {
+    const api = open(`/teacher/exams/${EXAM_ID}`, {
+      'GET /exams/:id': examDetail(
+        { createdBy: 'other@college.edu', status: 'READY' },
+        { canEdit: false, hasPdf: true },
+      ),
+      'GET /exams/:id/pdf': {
+        url: 'https://bucket/paper.pdf?sig=1',
+        expiresInSeconds: 900,
+        filename: 'week-3-test-2026-10-24.pdf',
+      },
     });
 
     expect(
@@ -412,9 +420,16 @@ describe('an exam that is published, or made by someone else', () => {
     expect(screen.getByLabelText('Title')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Only other@college\.edu can make or download the PDF/),
+      screen.getByText(/Only other@college\.edu can make the PDF\. You can download it\./),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Generate PDF' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make the PDF again' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download PDF' }));
+
+    await waitFor(() => expect(startDownload).toHaveBeenCalledTimes(1));
+    expect(api.callsTo('GET /exams/:id/pdf')).toHaveLength(1);
+    expect(api.callsTo('POST /exams/:id/pdf')).toHaveLength(0);
   });
 
   it('lets a super admin change another teacher’s exam', async () => {

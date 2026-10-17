@@ -1,10 +1,14 @@
 import type {
+  AnswerDetailResponse,
+  AppealSummary,
+  AuditEntry,
   BoardStudentRow,
   CellStatus,
   ExamBoardResponse,
   ExamDetailResponse,
   ExamResultsResponse,
   ExamSummary,
+  MyExamResultResponse,
   QuestionCell,
   QuestionDetail,
   QuestionDetailResponse,
@@ -12,6 +16,7 @@ import type {
   QuestionTestsResponse,
   ResultCell,
   ResultStudentRow,
+  StudentQuestionView,
   TestPreview,
 } from '@yulove/shared';
 
@@ -274,6 +279,99 @@ export function resultsOf(
       { number: 2, marks: 5 },
     ],
     students,
+    ...extra,
+  };
+}
+
+// ---- Student, appeals, overrides ----
+
+export function studentQuestion(extra: Partial<StudentQuestionView> = {}): StudentQuestionView {
+  return {
+    number: 1,
+    marks: 10,
+    score: 7,
+    status: 'GRADED',
+    messages: [],
+    testsPassed: 7,
+    testsTotal: 10,
+    failedSmallTests: [],
+    failedLargeTests: [],
+    adjustedByAdmin: false,
+    canAppeal: true,
+    ...extra,
+  };
+}
+
+export function myExam(
+  questions: StudentQuestionView[],
+  extra: Partial<MyExamResultResponse> = {},
+): MyExamResultResponse {
+  return {
+    examId: EXAM_ID,
+    title: 'Week 3 test',
+    date: '2026-10-24',
+    absent: false,
+    totalScore: questions.reduce((sum, q) => sum + q.score, 0),
+    maxScore: questions.reduce((sum, q) => sum + q.marks, 0),
+    questions,
+    ...extra,
+  };
+}
+
+export function appealSummary(extra: Partial<AppealSummary> = {}): AppealSummary {
+  return {
+    appealId: 'ap1',
+    examId: EXAM_ID,
+    studentEmail: 's1@college.edu',
+    questionNumber: 1,
+    message: 'My loop is correct, the reader misread the bound.',
+    status: 'OPEN',
+    createdAt: '2026-10-25T10:00:00.000Z',
+    studentName: 'Asha Rao',
+    rollNo: 'R1',
+    ...extra,
+  };
+}
+
+export function answerDetail(extra: Partial<AnswerDetailResponse> = {}): AnswerDetailResponse {
+  return {
+    examId: EXAM_ID,
+    studentEmail: 's1@college.edu',
+    questionNumber: 1,
+    marks: 10,
+    absent: false,
+    status: 'GRADED',
+    attempt: 1,
+    failReason: undefined,
+    failDetail: undefined,
+    imageUrl: 'https://bucket/answers/exam-1/R1/q1.jpg?sig=1',
+    imageExpiresInSeconds: 900,
+    language: 'python',
+    rawTranscription: 'def f(n)\n  return n',
+    correctedCode: 'def f(n):\n    return n',
+    fixes: ['Added a colon after def f(n)'],
+    estimatedComplexity: 'O(n)',
+    meetsComplexity: true,
+    testsPassed: 7,
+    testsTotal: 10,
+    verdicts: [
+      { index: 0, kind: 'small', verdict: 'AC' },
+      { index: 1, kind: 'small', verdict: 'WA', input: '{"n":1}', expected: '1', actual: '2' },
+    ],
+    score: 7,
+    override: undefined,
+    ...extra,
+  };
+}
+
+export function auditEntry(extra: Partial<AuditEntry> = {}): AuditEntry {
+  return {
+    timestamp: '2026-10-26T09:00:00.000Z',
+    actor: 'admin@college.edu',
+    action: 'OVERRIDE_SCORE',
+    before: { override: null, displayedScore: 7 },
+    after: { override: 9, displayedScore: 9 },
+    reason: 'Rechecked by hand',
     ...extra,
   };
 }

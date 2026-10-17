@@ -8,6 +8,7 @@ import {
   roundScore,
   ValidationError,
   type Override,
+  type SetOverrideResponse,
 } from '@yulove/shared';
 import {
   answerEntityKey,
@@ -85,17 +86,15 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   else await answersDb.clearOverride(key);
 
   const total = await recomputeExamTotal(exam, email);
-  return {
-    status: 200,
-    body: {
-      examId: exam.examId,
-      studentEmail: email,
-      questionNumber: number,
-      score: after.displayedScore,
-      override: next ?? null,
-      ...total,
-    },
+  const response: SetOverrideResponse = {
+    examId: exam.examId,
+    studentEmail: email,
+    questionNumber: number,
+    score: after.displayedScore,
+    override: next ?? null,
+    ...total,
   };
+  return { status: 200, body: response };
 }
 
 export const handler = apiHandler(handle);

@@ -2,7 +2,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BUCKET_ENV, ConflictError, type ExamPdfLinkResponse } from '@yulove/shared';
 import { requireUser } from '@yulove/shared/server';
-import { loadManagedExam } from '../lib/exams.js';
+import { loadExamInBatch } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 export const LINK_SECONDS = 15 * 60;
@@ -19,10 +19,14 @@ export function downloadName(title: string, date: string): string {
   return `${slug || 'exam'}-${date}.pdf`;
 }
 
-/** GET /exams/{id}/pdf (teacher): a download link for the paper, valid for 15 minutes. */
+/**
+ * GET /exams/{id}/pdf (teacher, batch manager): a download link for the paper, valid for 15
+ * minutes. Anyone assigned to the exam's batch (and any super admin) may download it; only the
+ * exam's creator or a super admin may generate it (POST /exams/{id}/pdf).
+ */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
-  const ctx = await requireUser(event, ['TEACHER']);
-  const exam = await loadManagedExam(ctx, pathParam(event, 'id'));
+  const ctx = await requireUser(event, ['TEACHER', 'BATCH_MANAGER']);
+  const exam = await loadExamInBatch(ctx, pathParam(event, 'id'));
 
   if (!exam.pdfKey || (exam.status !== 'READY' && exam.status !== 'PUBLISHED')) {
     throw new ConflictError('This exam has no PDF yet. Generate it first.');

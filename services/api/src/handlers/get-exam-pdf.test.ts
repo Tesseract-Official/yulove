@@ -1,7 +1,7 @@
 import type { ExamItem } from '@yulove/shared';
 import { FakeDb } from '@yulove/shared/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { deniedRoles, invoke, makeEvent, userOf } from '../test-utils/events.js';
+import { invoke, makeEvent, userOf } from '../test-utils/events.js';
 import { EXAM_ID, examItem, seedExamWorld } from '../test-utils/exams.js';
 import { OTHER_TEACHER, TEACHER } from '../test-utils/questions.js';
 import { downloadName, handler, LINK_SECONDS } from './get-exam-pdf.js';
@@ -81,17 +81,50 @@ describe('GET /exams/{id}/pdf', () => {
 });
 
 describe('GET /exams/{id}/pdf: who may call it', () => {
-  it.each(deniedRoles('TEACHER'))('refuses a %s with 403 and gives no link', async (role) => {
-    const { status, body } = await call(userOf(role, { batchIds: ['A'], batchId: 'A' }).email);
+  const MANAGER_A = 'batch-manager@college.edu';
+  const addStaff = (role: 'TEACHER' | 'BATCH_MANAGER', email: string, batchIds: string[]) =>
+    db.addUser(userOf(role, { email, batchIds }));
 
-    expect(status).toBe(403);
-    expect(JSON.stringify(body)).not.toContain('X-Amz');
+  it('lets the exam’s creator download it', async () => {
+    expect((await call(TEACHER)).status).toBe(200);
   });
 
-  it('refuses another teacher with 403', async () => {
+  it('lets another teacher assigned to the exam’s batch download it', async () => {
     const { status, body } = await call(OTHER_TEACHER);
-    expect(status).toBe(403);
-    expect(JSON.stringify(body)).not.toContain('X-Amz');
+
+    expect(status).toBe(200);
+    expect(new URL(body.url).pathname).toBe('/exams/exam-1/paper.pdf');
+  });
+
+  it('lets a batch manager assigned to the exam’s batch download it', async () => {
+    expect((await call(MANAGER_A)).status).toBe(200);
+  });
+
+  it('lets a super admin download any exam’s paper', async () => {
+    expect((await call('super-admin@college.edu')).status).toBe(200);
+  });
+
+  it.each([
+    ['a teacher', 'TEACHER'],
+    ['a batch manager', 'BATCH_MANAGER'],
+  ] as const)(
+    'refuses %s who is only assigned to another batch, and gives no link',
+    async (_who, role) => {
+      addStaff(role, 'elsewhere@college.edu', ['B']);
+
+      const { status, body } = await call('elsewhere@college.edu');
+
+      expect(status).toBe(403);
+      expect(JSON.stringify(body)).not.toContain('X-Amz');
+    },
+  );
+
+  it('refuses a teacher or batch manager with no batches', async () => {
+    addStaff('TEACHER', 'nobatch@college.edu', []);
+    addStaff('BATCH_MANAGER', 'nobatch2@college.edu', []);
+
+    expect((await call('nobatch@college.edu')).status).toBe(403);
+    expect((await call('nobatch2@college.edu')).status).toBe(403);
   });
 
   it('refuses the creator once they lose the batch', async () => {
@@ -99,8 +132,19 @@ describe('GET /exams/{id}/pdf: who may call it', () => {
     expect((await call(TEACHER)).status).toBe(403);
   });
 
-  it('lets a super admin download any exam’s paper', async () => {
-    expect((await call('super-admin@college.edu')).status).toBe(200);
+  it('refuses a student, even of the same batch, and gives no link', async () => {
+    const { status, body } = await call('s1@college.edu');
+
+    expect(status).toBe(403);
+    expect(JSON.stringify(body)).not.toContain('X-Amz');
+  });
+
+  it('answers 401 without an email claim', async () => {
+    const response = await invoke(
+      handler,
+      makeEvent({ method: 'GET', path: '/exams/exam-1/pdf', pathParameters: { id: EXAM_ID } }),
+    );
+    expect(response.status).toBe(401);
   });
 });
 

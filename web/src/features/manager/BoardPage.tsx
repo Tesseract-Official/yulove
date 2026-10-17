@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { keys, useBoard } from '../common/hooks.js';
 import { FAIL_REASON_TEXT, hasPhoto, isGrading, plural } from '../common/labels.js';
 import { BatchSelect, ExamSelect } from '../common/pickers.js';
+import { DownloadPdfButton } from '../common/DownloadPdfButton.js';
 import { Chip, PageHeader, StatusChip } from '../common/ui.js';
 import { PublishBar } from './PublishBar.js';
 
@@ -154,6 +155,9 @@ function BoardView({ board, batchId }: { board: ExamBoardResponse; batchId: stri
   return (
     <div>
       <h2>{board.title}</h2>
+      <p>
+        <DownloadPdfButton examId={board.examId} />
+      </p>
       <PublishBar board={board} />
 
       <ul className="counts" aria-label="Answers by status">

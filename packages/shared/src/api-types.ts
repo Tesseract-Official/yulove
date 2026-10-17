@@ -8,7 +8,8 @@ import type {
   Role,
   StaffRole,
 } from './enums.js';
-import type { Example, ExamItem, Override, Signature, TestVerdict } from './types.js';
+import type { StudentQuestionView } from './student-view.js';
+import type { AppealItem, Example, ExamItem, Override, Signature, TestVerdict } from './types.js';
 
 /** Response shapes of the API, shared by the handlers and the web app. Types only. */
 
@@ -360,4 +361,87 @@ export interface ExamResultsResponse {
   maxScore: number;
   questions: Array<{ number: number; marks: number }>;
   students: ResultStudentRow[];
+}
+
+/** One published exam in GET /me/exams. */
+export interface MyExamSummary {
+  examId: string;
+  title: string;
+  date: string;
+  absent: boolean;
+  totalScore: number;
+  maxScore: number;
+}
+
+/** GET /me/exams */
+export interface MyExamsResponse {
+  exams: MyExamSummary[];
+}
+
+/** GET /me/exams/{id}: the student's own result for one published exam. */
+export interface MyExamResultResponse {
+  examId: string;
+  title: string;
+  date: string;
+  absent: boolean;
+  /** "Absent", when the student was marked absent. */
+  message?: string;
+  totalScore: number;
+  maxScore: number;
+  questions: StudentQuestionView[];
+}
+
+/** One appeal in the review queue, with the student's name and roll number. */
+export interface AppealSummary extends AppealItem {
+  studentName: string | undefined;
+  rollNo: string | undefined;
+}
+
+/** GET /appeals?examId=&status= */
+export interface AppealListResponse {
+  examId: string;
+  appeals: AppealSummary[];
+}
+
+/** POST /appeals (201) */
+export interface CreateAppealResponse {
+  appeal: AppealItem;
+}
+
+/** PUT /appeals/{id}: `attempt` is set when the answer was sent to be graded again. */
+export interface UpdateAppealResponse {
+  appeal: AppealItem;
+  attempt?: number;
+}
+
+/** PUT /answers/{examId}/{studentEmail}/{q}/override */
+export interface SetOverrideResponse {
+  examId: string;
+  studentEmail: string;
+  questionNumber: number;
+  /** The score now shown for the question. */
+  score: number;
+  override: Override | null;
+  totalScore: number;
+  maxScore: number;
+}
+
+/** One recorded change to an answer's score. */
+export interface AuditEntry {
+  timestamp: string;
+  actor: string;
+  /** OVERRIDE_SCORE or CLEAR_OVERRIDE. */
+  action: string;
+  /** `{ override, displayedScore }` before the change. */
+  before: unknown;
+  after: unknown;
+  reason: string;
+}
+
+/** GET /answers/{examId}/{studentEmail}/{q}/audit, newest first. */
+export interface AuditHistoryResponse {
+  examId: string;
+  studentEmail: string;
+  questionNumber: number;
+  entries: AuditEntry[];
 }

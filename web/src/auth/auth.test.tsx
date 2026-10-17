@@ -43,7 +43,9 @@ describe('the sign-in callback', () => {
 
     renderApp({ route: '/auth/callback?code=abc&state=xyz', oidc });
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Student' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Your results' }),
+    ).toBeInTheDocument();
   });
 
   it("shows Cognito's reason without its wrapper, and lets the person try again", async () => {
@@ -111,7 +113,7 @@ describe('a session that cannot be renewed while the app is open', () => {
     const oidc = new FakeOidc(fakeUser());
 
     renderApp({ oidc });
-    await screen.findByRole('heading', { level: 1, name: 'Student' });
+    await screen.findByRole('heading', { level: 1, name: 'Your results' });
     oidc.failRenewal();
 
     expect(await screen.findByText('Your session has ended. Sign in again.')).toBeInTheDocument();

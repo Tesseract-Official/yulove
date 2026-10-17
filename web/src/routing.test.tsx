@@ -21,11 +21,12 @@ afterEach(() => {
 const signedIn = () => new FakeOidc(fakeUser());
 const location = () => screen.getByTestId('location');
 
-const HOMES: Array<[Role, string, string]> = [
-  ['SUPER_ADMIN', '/admin', 'Admin'],
-  ['BATCH_MANAGER', '/manager', 'Batch manager'],
-  ['TEACHER', '/teacher', 'Teacher'],
-  ['STUDENT', '/student', 'Student'],
+// [role, home, the page's title, the name of its link in the super admin's switcher]
+const HOMES: Array<[Role, string, string, string]> = [
+  ['SUPER_ADMIN', '/admin', 'Admin', 'Admin'],
+  ['BATCH_MANAGER', '/manager', 'Batch manager', 'Batch manager'],
+  ['TEACHER', '/teacher', 'Teacher', 'Teacher'],
+  ['STUDENT', '/student', 'Your results', 'Student'],
 ];
 
 describe('routing by role', () => {
@@ -36,17 +37,13 @@ describe('routing by role', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument();
     expect(location()).toHaveTextContent(path);
-    // The student home is still a placeholder that lists the user's batches.
-    if (role === 'STUDENT') {
-      expect(screen.getByText('Batch Alpha')).toBeInTheDocument();
-    }
   });
 
   it('asks GET /me with the ID token, not the access token', async () => {
     const fetchMock = stubApi(() => jsonResponse(meFor('STUDENT')));
 
     renderApp({ oidc: signedIn() });
-    await screen.findByRole('heading', { level: 1, name: 'Student' });
+    await screen.findByRole('heading', { level: 1, name: 'Your results' });
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('https://api.example.com/me');
@@ -55,12 +52,12 @@ describe('routing by role', () => {
     expect(authorization).not.toContain(ACCESS_TOKEN);
   });
 
-  it('shows an empty state for a user with no batches', async () => {
+  it('shows a student with nothing published an empty state', async () => {
     stubApi(() => jsonResponse(meFor('STUDENT', { batches: [] })));
 
     renderApp({ oidc: signedIn(), route: '/student' });
 
-    expect(await screen.findByText('No batches yet')).toBeInTheDocument();
+    expect(await screen.findByText('Nothing published yet')).toBeInTheDocument();
   });
 });
 
@@ -101,8 +98,8 @@ describe('guards', () => {
         .map((link) => link.textContent),
     ).toEqual(['Admin', 'Batch manager', 'Teacher', 'Student']);
 
-    for (const [, path, title] of HOMES) {
-      await userEvent.click(within(switcher).getByRole('link', { name: title }));
+    for (const [, path, title, link] of HOMES) {
+      await userEvent.click(within(switcher).getByRole('link', { name: link }));
       expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument();
       expect(location()).toHaveTextContent(path);
     }
@@ -179,6 +176,8 @@ describe('GET /me failures', () => {
 
     expect(await screen.findByText('Could not load your account')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Student' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Your results' }),
+    ).toBeInTheDocument();
   });
 });

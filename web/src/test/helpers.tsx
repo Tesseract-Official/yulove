@@ -128,6 +128,8 @@ export function stubApi(me: () => Response | Promise<Response>) {
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const url = String(input);
     if (url === `${CONFIG.apiUrl}/me`) return me();
+    // The student home asks for the published exams; these tests have none.
+    if (url === `${CONFIG.apiUrl}/me/exams`) return jsonResponse({ exams: [] });
     return apiErrorResponse(404, 'NOT_FOUND', 'Not found');
   });
   vi.stubGlobal('fetch', fetchMock);

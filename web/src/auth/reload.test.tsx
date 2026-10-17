@@ -41,7 +41,9 @@ describe('reloading the page', () => {
     const silent = vi.spyOn(reloaded, 'signinSilent');
     renderApp({ oidc: reloaded, route: '/student' });
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Student' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Your results' }),
+    ).toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
     expect(silent).not.toHaveBeenCalled();
     expect(bearerOf(fetchMock.mock.calls[0]?.[1])).toBe('Bearer the-id-token');
@@ -175,7 +177,9 @@ describe('an expired token on startup', () => {
 
     renderApp({ oidc: reloaded });
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Student' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Your results' }),
+    ).toBeInTheDocument();
     const grant = calls.find((call) => call.url.endsWith('/oauth2/token'));
     expect(grant?.init?.method).toBe('POST');
     const form = new URLSearchParams(String(grant?.init?.body));
@@ -211,7 +215,9 @@ describe('a token that expires while the app is open', () => {
 
     renderApp({ oidc });
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Student' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Your results' }),
+    ).toBeInTheDocument();
     expect(oidc.signinSilent).toHaveBeenCalledTimes(1);
     expect(bearerOf(fetchMock.mock.calls[0]?.[1])).toBe('Bearer the-id-token');
     expect(bearerOf(fetchMock.mock.calls[1]?.[1])).toBe('Bearer renewed-id-token');

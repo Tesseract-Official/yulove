@@ -3,6 +3,7 @@ import {
   mapLimit,
   ValidationError,
   type AppealItem,
+  type AppealListResponse,
   type AppealStatus,
 } from '@yulove/shared';
 import { appealsDb, requireUser, usersDb } from '@yulove/shared/server';
@@ -34,17 +35,15 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   );
   const byEmail = new Map(students.flatMap((u) => (u ? [[u.email, u] as const] : [])));
 
-  return {
-    status: 200,
-    body: {
-      examId: exam.examId,
-      appeals: appeals.map((a) => ({
-        ...a,
-        studentName: byEmail.get(a.studentEmail)?.name,
-        rollNo: byEmail.get(a.studentEmail)?.rollNo,
-      })),
-    },
+  const body: AppealListResponse = {
+    examId: exam.examId,
+    appeals: appeals.map((a) => ({
+      ...a,
+      studentName: byEmail.get(a.studentEmail)?.name,
+      rollNo: byEmail.get(a.studentEmail)?.rollNo,
+    })),
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);
