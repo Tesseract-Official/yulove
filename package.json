@@ -14,7 +14,8 @@
     "format:check": "prettier --check .",
     "build": "pnpm -r build",
     "test:worker-docker": "pnpm --filter @yulove/worker test:docker",
-    "seed:super-admins": "pnpm --filter @yulove/scripts seed:super-admins"
+    "seed:super-admins": "pnpm --filter @yulove/scripts seed:super-admins",
+    "smoke:worker": "pnpm --filter @yulove/scripts smoke:worker"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

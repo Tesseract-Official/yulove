@@ -8,11 +8,14 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "seed:super-admin": "tsx seed-super-admin.ts",
-    "seed:super-admins": "tsx seed-super-admins.ts"
+    "seed:super-admins": "tsx seed-super-admins.ts",
+    "smoke:worker": "tsx smoke-worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1152.0",
     "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@aws-sdk/client-sqs": "^3.1152.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
     "@yulove/shared": "workspace:^"
   },
