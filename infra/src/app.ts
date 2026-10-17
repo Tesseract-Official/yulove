@@ -47,9 +47,12 @@ const pipeline = new PipelineStack(app, 'DsaJudgePipeline', {
   geminiTranscribeModel,
   questionsTable: data.tables.Questions,
   answersTable: data.tables.Answers,
+  examsTable: data.tables.Exams,
+  examStudentsTable: data.tables.ExamStudents,
   bucket: data.bucket,
   transcribeQueue: queues.queues.transcribe,
   executeQueue: queues.queues.execute,
+  resultsQueue: queues.queues.results,
   geminiApiKeySecret: data.geminiApiKeySecret,
 });
 

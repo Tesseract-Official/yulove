@@ -70,6 +70,12 @@ export const setAbsentBody = z.object({
 });
 export type SetAbsentBody = z.infer<typeof setAbsentBody>;
 
+/** POST /exams/{id}/publish. `confirm` publishes even though some answers are still being graded. */
+export const publishBody = z.object({
+  confirm: z.boolean().optional(),
+});
+export type PublishBody = z.infer<typeof publishBody>;
+
 const exampleSchema = z.object({
   input: z.string().min(1),
   output: z.string(),

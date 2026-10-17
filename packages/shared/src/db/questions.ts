@@ -188,6 +188,47 @@ export function saveSignature(
 }
 
 /**
+ * The worker built all 10 tests: moves the round from GENERATING to NEEDS_REVIEW and stores the
+ * test count and file. Only for the current round and only once; a stale round or a result that
+ * was already recorded returns 'stale' and changes nothing.
+ */
+export async function saveTestsReady(
+  questionId: string,
+  version: number,
+  attempt: number,
+  tests: { testsKey: string; testCount: number },
+): Promise<GenerationWrite> {
+  const update = buildUpdate({
+    set: { testStatus: 'NEEDS_REVIEW', testCount: tests.testCount, testsKey: tests.testsKey },
+    remove: ['testFailure', 'testGenTries'],
+  });
+  try {
+    await docClient().send(
+      new UpdateCommand({
+        TableName: table(),
+        Key: { questionId, version },
+        UpdateExpression: update.expression,
+        ConditionExpression: '#testAttempt = :expectedAttempt AND #current = :generating',
+        ExpressionAttributeNames: {
+          ...update.names,
+          '#testAttempt': 'testAttempt',
+          '#current': 'testStatus',
+        },
+        ExpressionAttributeValues: {
+          ...update.values,
+          ':expectedAttempt': attempt,
+          ':generating': 'GENERATING',
+        },
+      }),
+    );
+    return 'written';
+  } catch (error) {
+    if (isConditionalCheckFailure(error)) return 'stale';
+    throw error;
+  }
+}
+
+/**
  * Counts one more time that this round ended because Gemini was busy (rate limited or
  * unavailable). Only counts for the current round. Returns the new count, or 'stale'.
  */

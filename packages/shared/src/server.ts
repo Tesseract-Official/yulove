@@ -1,6 +1,7 @@
 // Server-only: DynamoDB access, auth and audit. Do not import this from the web app.
 export * from './audit.js';
 export * from './auth.js';
+export * from './exam-totals.js';
 export * from './question-usage.js';
 export * from './request-audit.js';
 export * as answersDb from './db/answers.js';

@@ -111,3 +111,15 @@ export const toRefs = (questions: readonly ExamQuestionRef[]): ExamQuestionRef[]
     version,
     marks,
   }));
+
+/**
+ * An exam the caller may work with through its batch: it exists (404) and the caller is assigned
+ * to its batch (403). Super admins pass. Unlike loadManagedExam, any teacher or batch manager of
+ * the batch may use it, not only the teacher who made it.
+ */
+export async function loadExamInBatch(ctx: AuthContext, examId: string): Promise<ExamItem> {
+  const exam = await examsDb.getExam(examId);
+  if (!exam) throw new NotFoundError(`No exam ${examId}`);
+  ctx.assertBatchAccess(exam.batchId);
+  return exam;
+}

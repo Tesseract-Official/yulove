@@ -191,6 +191,64 @@ export const ROUTES: readonly RouteDef[] = [
       queues: { transcribe: 'send' },
     },
   },
+  {
+    method: HttpMethod.GET,
+    path: '/exams/{id}/answers',
+    handler: 'get-exam-board',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+    },
+  },
+  {
+    method: HttpMethod.PUT,
+    path: '/exams/{id}/students/{email}/absent',
+    handler: 'set-absent',
+    // Writes the absent flag and the student's new total.
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'read' },
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/exams/{id}/publish',
+    handler: 'publish-exam',
+    // Sets the exam PUBLISHED and works out every student's total first.
+    permissions: {
+      tables: { Users: 'read', Exams: 'readWrite', ExamStudents: 'readWrite', Answers: 'read' },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/exams/{id}/results',
+    handler: 'get-exam-results',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/answers/{examId}/{studentEmail}/{q}',
+    handler: 'get-answer',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+      // The photo link is signed with this role: GetObject, only under answers/.
+      bucket: 'read',
+      bucketPrefix: ANSWERS_ONLY,
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/answers/{examId}/{studentEmail}/{q}/rerun',
+    handler: 'rerun-answer',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'readWrite' },
+      // HeadObject on the photo; the listing right makes a missing photo a 404, not a 403.
+      bucket: 'read',
+      bucketPrefix: ANSWERS_ONLY,
+      bucketList: true,
+      queues: { transcribe: 'send' },
+    },
+  },
 ];
 
 /** Registers every API route on the stack. */

@@ -1,15 +1,31 @@
+import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import {
+  ANSWER_IMAGE_MAX_BYTES,
+  ANSWER_IMAGE_TYPE,
   answerImageKey,
+  BUCKET_ENV,
   ConflictError,
+  HttpError,
+  messageDeduplicationId,
+  messageGroupId,
   NotFoundError,
   parseBody,
+  QUEUE_ENV,
+  transcribeMsg,
   ValidationError,
   type ExamItem,
   type ExamQuestionRef,
   type UserItem,
   type SubmitAnswerBody,
 } from '@yulove/shared';
-import { examStudentsDb, examsDb, usersDb, type AuthContext } from '@yulove/shared/server';
+import {
+  answersDb,
+  examStudentsDb,
+  examsDb,
+  usersDb,
+  type AuthContext,
+} from '@yulove/shared/server';
 import type { ApiEvent } from './http.js';
 
 /** Everything the upload and submit routes know once the checks have passed. */
@@ -84,4 +100,97 @@ export function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing environment variable ${name}`);
   return value;
+}
+
+const isMissing = (error: unknown) =>
+  (error as { name?: string } | undefined)?.name === 'NotFound' ||
+  (error as { name?: string } | undefined)?.name === 'NoSuchKey' ||
+  (error as { $metadata?: { httpStatusCode?: number } } | undefined)?.$metadata?.httpStatusCode ===
+    404;
+
+/** The photo is not in S3 (a 409: upload it first). */
+export class MissingPhotoError extends ConflictError {
+  constructor() {
+    super('No photo has been uploaded for this answer yet. Upload it first.');
+  }
+}
+
+/**
+ * Checks that the photo is in S3, is a JPEG and is between 1 byte and 5 MB. A missing photo is a
+ * 409 ("upload it first"); other S3 errors are passed on.
+ */
+export async function checkPhoto(imageKey: string): Promise<void> {
+  try {
+    const head = await new S3Client({}).send(
+      new HeadObjectCommand({ Bucket: requiredEnv(BUCKET_ENV), Key: imageKey }),
+    );
+    if (head.ContentType !== ANSWER_IMAGE_TYPE) {
+      throw new ConflictError('The uploaded file is not a JPEG. Upload the photo again.');
+    }
+    if ((head.ContentLength ?? 0) < 1 || (head.ContentLength ?? 0) > ANSWER_IMAGE_MAX_BYTES) {
+      throw new ConflictError('The uploaded photo is empty or over 5 MB. Upload it again.');
+    }
+  } catch (error) {
+    if (isMissing(error)) throw new MissingPhotoError();
+    throw error;
+  }
+}
+
+/** The first of these keys that has a valid photo; a missing photo moves on to the next key. */
+export async function findPhoto(keys: readonly string[]): Promise<string> {
+  const unique = [...new Set(keys)];
+  let first: MissingPhotoError | undefined;
+  for (const key of unique) {
+    try {
+      await checkPhoto(key);
+      return key;
+    } catch (error) {
+      if (!(error instanceof MissingPhotoError)) throw error;
+      first ??= error;
+    }
+  }
+  throw first ?? new MissingPhotoError();
+}
+
+/** Counts a new attempt on the photo at `imageKey` and queues it for transcription. */
+export async function startAttempt(target: AnswerTarget, imageKey: string): Promise<number> {
+  const key = {
+    examId: target.exam.examId,
+    studentEmail: target.student.email,
+    questionNumber: target.question.number,
+  };
+  // Counts the attempt, sets QUEUED, clears any earlier failure and the Gemini busy count.
+  const attempt = await answersDb.beginAttempt(key, imageKey);
+
+  const message = transcribeMsg.parse({
+    ...key,
+    attempt,
+    questionId: target.question.questionId,
+    version: target.question.version,
+  });
+  try {
+    await new SQSClient({}).send(
+      new SendMessageCommand({
+        QueueUrl: requiredEnv(QUEUE_ENV.transcribe),
+        MessageBody: JSON.stringify(message),
+        MessageGroupId: messageGroupId(key.examId, key.studentEmail),
+        MessageDeduplicationId: messageDeduplicationId(
+          key.examId,
+          key.studentEmail,
+          key.questionNumber,
+          attempt,
+        ),
+      }),
+    );
+  } catch (error) {
+    console.error('Could not queue an answer for transcription', error);
+    await answersDb.markFailed(
+      key,
+      attempt,
+      'WORKER_ERROR',
+      'Could not queue the answer, submit again',
+    );
+    throw new HttpError(503, 'UNAVAILABLE', 'Could not queue the answer. Try submitting again.');
+  }
+  return attempt;
 }

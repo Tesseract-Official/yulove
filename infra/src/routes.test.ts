@@ -89,6 +89,33 @@ const EXPECTED: Expected[] = [
     bucket: { actions: ['s3:GetObject'], pattern: 'answers/*', listBucket: true },
     sendsTo: 'transcribe',
   },
+  {
+    routeKey: 'GET /exams/{id}/answers',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+  },
+  {
+    routeKey: 'PUT /exams/{id}/students/{email}/absent',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'read' },
+  },
+  {
+    routeKey: 'POST /exams/{id}/publish',
+    tables: { Users: 'read', Exams: 'readWrite', ExamStudents: 'readWrite', Answers: 'read' },
+  },
+  {
+    routeKey: 'GET /exams/{id}/results',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+  },
+  {
+    routeKey: 'GET /answers/{examId}/{studentEmail}/{q}',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+    bucket: { actions: ['s3:GetObject'], pattern: 'answers/*' },
+  },
+  {
+    routeKey: 'POST /answers/{examId}/{studentEmail}/{q}/rerun',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'readWrite' },
+    bucket: { actions: ['s3:GetObject'], pattern: 'answers/*', listBucket: true },
+    sendsTo: 'transcribe',
+  },
 ];
 
 const TABLES = [

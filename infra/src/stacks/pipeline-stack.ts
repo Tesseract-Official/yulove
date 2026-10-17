@@ -6,7 +6,7 @@ import type { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import type { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import type { Queue } from 'aws-cdk-lib/aws-sqs';
-import { BUCKET_ENV, QUEUE_ENV, TABLE_ENV } from '@yulove/shared';
+import { BUCKET_ENV, QUEUE_ENV, TABLE_ENV, TESTGEN_FUNCTION_ENV } from '@yulove/shared';
 import type { Construct } from 'constructs';
 import { serviceEntry } from '../lib/handler-paths.js';
 import { createNodeFunction } from '../lib/node-function.js';
@@ -16,6 +16,9 @@ import { GEMINI_SECRET_NAME } from './data-stack.js';
 /** Most transcriptions that run at the same time. */
 export const TRANSCRIBE_MAX_CONCURRENCY = 5;
 
+/** Most results recorded at the same time (SQS cannot go lower than 2). */
+export const RECORD_MAX_CONCURRENCY = 2;
+
 export interface PipelineStackProps extends StackProps {
   /** Gemini model for generating tests (the Lambda's GEMINI_MODEL). */
   geminiTestgenModel: string;
@@ -23,9 +26,12 @@ export interface PipelineStackProps extends StackProps {
   geminiTranscribeModel: string;
   questionsTable: Table;
   answersTable: Table;
+  examsTable: Table;
+  examStudentsTable: Table;
   bucket: Bucket;
   transcribeQueue: Queue;
   executeQueue: Queue;
+  resultsQueue: Queue;
   geminiApiKeySecret: Secret;
 }
 
@@ -33,6 +39,7 @@ export interface PipelineStackProps extends StackProps {
 export class PipelineStack extends Stack {
   readonly testGenerationFunction: NodejsFunction;
   readonly transcribeFunction: NodejsFunction;
+  readonly recordFunction: NodejsFunction;
 
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
     super(scope, id, props);
@@ -74,6 +81,7 @@ export class PipelineStack extends Stack {
     props.executeQueue.grantSendMessages(this.testGenerationFunction);
 
     this.transcribeFunction = this.addTranscribe(props);
+    this.recordFunction = this.addRecord(props);
   }
 
   /**
@@ -138,6 +146,46 @@ export class PipelineStack extends Stack {
     );
     grantObjects(fn, props.bucket, 'read', 'answers/*');
     props.executeQueue.grantSendMessages(fn);
+    return fn;
+  }
+
+  /**
+   * Records what the worker found: the verdicts and score of an answer, or the outcome of a
+   * question's test setup. One message at a time, at most two at once. It catches its own errors,
+   * so a message is always deleted.
+   */
+  private addRecord(props: PipelineStackProps): NodejsFunction {
+    const fn = createNodeFunction(this, 'RecordFunction', {
+      entry: serviceEntry('pipeline/src/handlers/record.ts'),
+      description: 'Records worker results: answer scores, totals and question test setup',
+      timeout: Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        [TABLE_ENV.Answers]: props.answersTable.tableName,
+        [TABLE_ENV.Exams]: props.examsTable.tableName,
+        [TABLE_ENV.ExamStudents]: props.examStudentsTable.tableName,
+        [TABLE_ENV.Questions]: props.questionsTable.tableName,
+        [TESTGEN_FUNCTION_ENV]: this.testGenerationFunction.functionName,
+      },
+    });
+
+    // The results queue triggers it. No reserved concurrency (the account's quota is too low);
+    // the trigger itself caps it at two at once.
+    fn.addEventSource(
+      new SqsEventSource(props.resultsQueue, {
+        batchSize: 1,
+        maxConcurrency: RECORD_MAX_CONCURRENCY,
+      }),
+    );
+
+    // Exactly what it does, and nothing else: no S3, no secret, no Users table.
+    const allow = (actions: string[], table: Table) =>
+      fn.addToRolePolicy(new PolicyStatement({ actions, resources: [table.tableArn] }));
+    allow(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], props.answersTable);
+    allow(['dynamodb:GetItem'], props.examsTable);
+    allow(['dynamodb:GetItem', 'dynamodb:UpdateItem'], props.examStudentsTable);
+    allow(['dynamodb:GetItem', 'dynamodb:UpdateItem'], props.questionsTable);
+    this.testGenerationFunction.grantInvoke(fn);
     return fn;
   }
 }

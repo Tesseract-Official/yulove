@@ -9,6 +9,7 @@ import {
   getLatestQuestion,
   markGenerationFailed,
   resetQuestionTests,
+  saveTestsReady,
   saveSignature,
   updateQuestion,
 } from './questions.js';
@@ -214,5 +215,49 @@ describe('countGenerationTry', () => {
     db.put('Questions', question({ testStatus: 'GENERATING', testAttempt: 2, testGenTries: 2 }));
     await resetQuestionTests('q1', 1, { title: 'New' });
     expect(stored()).not.toHaveProperty('testGenTries');
+  });
+});
+
+describe('saveTestsReady', () => {
+  const ready = { testsKey: 'questions/q1/v1/tests.json', testCount: 10 };
+
+  beforeEach(() => {
+    db.put(
+      'Questions',
+      question({ testStatus: 'GENERATING', testAttempt: 3, testGenTries: 1, testFailure: 'old' }),
+    );
+  });
+
+  it('moves the current round to NEEDS_REVIEW with the tests and clears old failure data', async () => {
+    await expect(saveTestsReady('q1', 1, 3, ready)).resolves.toBe('written');
+    expect(stored()).toMatchObject({
+      testStatus: 'NEEDS_REVIEW',
+      testCount: 10,
+      testsKey: 'questions/q1/v1/tests.json',
+      testAttempt: 3,
+    });
+    expect(stored()).not.toHaveProperty('testFailure');
+    expect(stored()).not.toHaveProperty('testGenTries');
+  });
+
+  it("is 'stale' for another round and changes nothing", async () => {
+    await expect(saveTestsReady('q1', 1, 2, ready)).resolves.toBe('stale');
+    expect(stored()).toMatchObject({ testStatus: 'GENERATING' });
+  });
+
+  it("is 'stale' for a result that was already recorded, even after approval", async () => {
+    await saveTestsReady('q1', 1, 3, ready);
+    await expect(saveTestsReady('q1', 1, 3, { ...ready, testCount: 9 })).resolves.toBe('stale');
+    expect(stored()?.testCount).toBe(10);
+
+    await approveQuestion('q1', 1);
+    await expect(saveTestsReady('q1', 1, 3, ready)).resolves.toBe('stale');
+    expect(stored()?.testStatus).toBe('APPROVED');
+  });
+
+  it("is 'stale' once the round failed", async () => {
+    await markGenerationFailed('q1', 1, 3, 'nope');
+    await expect(saveTestsReady('q1', 1, 3, ready)).resolves.toBe('stale');
+    expect(stored()?.testStatus).toBe('GENERATION_FAILED');
   });
 });

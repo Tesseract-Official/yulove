@@ -1,7 +1,6 @@
-import { Match } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../testing.js';
-import { TRANSCRIBE_MAX_CONCURRENCY } from './pipeline-stack.js';
+import { RECORD_MAX_CONCURRENCY, TRANSCRIBE_MAX_CONCURRENCY } from './pipeline-stack.js';
 
 const { templates, pipeline } = buildApp();
 const template = templates.pipeline;
@@ -40,12 +39,22 @@ function statementsOf(description: string): Statement[] {
 const withPrefix = (statements: Statement[], prefix: string) =>
   statements.filter((s) => actionsOf(s).some((a) => a.startsWith(prefix)));
 
+/** The trigger that reads one queue. */
+function mappingFor(queue: 'transcribe' | 'results') {
+  const found = Object.values(template.findResources('AWS::Lambda::EventSourceMapping')).filter(
+    (m) => JSON.stringify(m.Properties.EventSourceArn).includes(`${queue}Queue`),
+  );
+  if (found.length !== 1) throw new Error(`Expected one trigger for the ${queue} queue`);
+  return found[0]!;
+}
+
+const RECORD = 'Records worker results: answer scores, totals and question test setup';
 const TESTGEN = 'Generates test material for a question with Gemini';
 const TRANSCRIBE = 'Transcribes an answer photo with Gemini and queues it for the worker';
 
 describe('PipelineStack', () => {
   it('has the test-generation and transcribe Lambdas, both on Node.js 22', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 2);
+    template.resourceCountIs('AWS::Lambda::Function', 3);
     for (const description of [TESTGEN, TRANSCRIBE]) {
       expect(lambdaFor(description).properties['Runtime']).toBe('nodejs22.x');
     }
@@ -155,25 +164,21 @@ describe('PipelineStack: Transcribe Lambda', () => {
   it('reserves no concurrency (the account quota is too low); the queue trigger caps it at 5', () => {
     expect(lambdaFor(TRANSCRIBE).properties).not.toHaveProperty('ReservedConcurrentExecutions');
     expect(TRANSCRIBE_MAX_CONCURRENCY).toBe(5);
-    template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
-      ScalingConfig: { MaximumConcurrency: 5 },
-    });
+    expect(mappingFor('transcribe').Properties.ScalingConfig).toEqual({ MaximumConcurrency: 5 });
   });
 
   it('is triggered by the transcribe queue, one message at a time', () => {
-    template.resourceCountIs('AWS::Lambda::EventSourceMapping', 1);
-    template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
-      BatchSize: 1,
-      EventSourceArn: Match.anyValue(),
-    });
-    const mapping = Object.values(template.findResources('AWS::Lambda::EventSourceMapping'))[0];
-    expect(JSON.stringify(mapping?.Properties.EventSourceArn)).toContain('transcribeQueue');
+    expect(mappingFor('transcribe').Properties.BatchSize).toBe(1);
+    expect(JSON.stringify(mappingFor('transcribe').Properties.FunctionName)).toContain(
+      'TranscribeFunction',
+    );
   });
 
   it('does not report partial batch failures: a thrown error returns the whole one-message batch', () => {
-    const mapping = Object.values(template.findResources('AWS::Lambda::EventSourceMapping'))[0];
-    expect(mapping?.Properties).not.toHaveProperty('FunctionResponseTypes');
-    expect(mapping?.Properties.BatchSize).toBe(1);
+    for (const queue of ['transcribe', 'results'] as const) {
+      expect(mappingFor(queue).Properties).not.toHaveProperty('FunctionResponseTypes');
+      expect(mappingFor(queue).Properties.BatchSize).toBe(1);
+    }
   });
 
   it('has no automatic retries of its own: SQS redelivers instead', () => {
@@ -264,5 +269,86 @@ describe('PipelineStack: Transcribe Lambda', () => {
     }
     const services = new Set(statements().map((s) => actionsOf(s)[0]?.split(':')[0]));
     expect([...services].sort()).toEqual(['dynamodb', 's3', 'secretsmanager', 'sqs']);
+  });
+});
+
+describe('PipelineStack: Record Lambda', () => {
+  const statements = () => statementsOf(RECORD);
+  const forTable = (name: string) =>
+    withPrefix(statements(), 'dynamodb:').filter((s) =>
+      JSON.stringify(s.Resource).includes(`${name}Table`),
+    );
+
+  it('times out after 30 seconds, and reserves no concurrency', () => {
+    const p = lambdaFor(RECORD).properties;
+    expect(p['Timeout']).toBe(30);
+    expect(p['MemorySize']).toBe(256);
+    expect(p).not.toHaveProperty('ReservedConcurrentExecutions');
+  });
+
+  it('is triggered by the results queue, one message at a time, at most 2 at once', () => {
+    const mapping = mappingFor('results');
+    expect(JSON.stringify(mapping.Properties.FunctionName)).toContain('RecordFunction');
+    expect(mapping.Properties.BatchSize).toBe(1);
+    expect(mapping.Properties.ScalingConfig).toEqual({ MaximumConcurrency: 2 });
+    expect(RECORD_MAX_CONCURRENCY).toBe(2);
+  });
+
+  it('gets its four tables and the test-generation function name from the environment', () => {
+    expect(lambdaFor(RECORD).properties.Environment?.Variables).toMatchObject({
+      ANSWERS_TABLE: expect.anything(),
+      EXAMS_TABLE: expect.anything(),
+      EXAM_STUDENTS_TABLE: expect.anything(),
+      QUESTIONS_TABLE: expect.anything(),
+      TESTGEN_FUNCTION_NAME: expect.anything(),
+    });
+  });
+
+  it('has exactly the table actions it needs on each of four tables', () => {
+    expect(forTable('Answers').flatMap(actionsOf).sort()).toEqual([
+      'dynamodb:GetItem',
+      'dynamodb:Query',
+      'dynamodb:UpdateItem',
+    ]);
+    expect(forTable('Exams').flatMap(actionsOf)).toEqual(['dynamodb:GetItem']);
+    expect(forTable('ExamStudents').flatMap(actionsOf).sort()).toEqual([
+      'dynamodb:GetItem',
+      'dynamodb:UpdateItem',
+    ]);
+    expect(forTable('Questions').flatMap(actionsOf).sort()).toEqual([
+      'dynamodb:GetItem',
+      'dynamodb:UpdateItem',
+    ]);
+    // Nothing on any other table (Users, Batches, Appeals, AuditLog) and no PutItem/Delete.
+    expect(withPrefix(statements(), 'dynamodb:')).toHaveLength(4);
+    expect(withPrefix(statements(), 'dynamodb:').flatMap(actionsOf)).not.toContain(
+      'dynamodb:PutItem',
+    );
+  });
+
+  it('can receive from the results queue and send nothing', () => {
+    const sqs = withPrefix(statements(), 'sqs:');
+    expect(sqs).toHaveLength(1);
+    expect(JSON.stringify(sqs[0]?.Resource)).toContain('resultsQueue');
+    expect(actionsOf(sqs[0] as Statement)).toEqual(
+      expect.arrayContaining(['sqs:ReceiveMessage', 'sqs:DeleteMessage']),
+    );
+    expect(actionsOf(sqs[0] as Statement)).not.toContain('sqs:SendMessage');
+  });
+
+  it('can invoke only the test-generation function', () => {
+    const invoke = withPrefix(statements(), 'lambda:');
+    expect(invoke).toHaveLength(1);
+    expect(actionsOf(invoke[0] as Statement)).toEqual(['lambda:InvokeFunction']);
+    expect(JSON.stringify(invoke[0]?.Resource)).toContain('TestGenerationFunction');
+    expect(JSON.stringify(invoke[0]?.Resource)).not.toMatch(/"\*"/);
+  });
+
+  it('has no S3, secret or other permissions', () => {
+    const services = new Set(statements().map((s) => actionsOf(s)[0]?.split(':')[0]));
+    expect([...services].sort()).toEqual(['dynamodb', 'lambda', 'sqs']);
+    for (const s of statements()) {
+      expect(JSON.stringify(s.Resource), actionsOf(s).join()).not.toBe('"*"');
+    }
   });
 });
