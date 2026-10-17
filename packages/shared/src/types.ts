@@ -23,12 +23,16 @@ export interface UserItem {
   /** Batch managers and teachers: the batches they are assigned to. */
   batchIds?: string[];
   active: boolean;
+  /** Sample data written by a dev script; never real people. */
+  dev?: boolean;
 }
 
 /** Batches: key `batchId`. */
 export interface BatchItem {
   batchId: string;
   name: string;
+  /** Sample data written by a dev script. */
+  dev?: boolean;
 }
 
 export interface Example {
@@ -102,6 +106,8 @@ export interface ExamItem {
   publishedBy?: string;
   /** ISO timestamp. */
   publishedAt?: string;
+  /** Sample data written by a dev script. */
+  dev?: boolean;
 }
 
 /** ExamStudents: key `examId` / `studentEmail`. Index byStudent (studentEmail). */
@@ -111,6 +117,8 @@ export interface ExamStudentItem {
   absent: boolean;
   totalScore?: number;
   maxScore?: number;
+  /** Sample data written by a dev script. */
+  dev?: boolean;
 }
 
 export interface TestVerdict {
@@ -159,6 +167,8 @@ export interface AnswerItem {
   /** Formula score without any override. */
   score?: number;
   override?: Override;
+  /** Sample data written by a dev script. */
+  dev?: boolean;
 }
 
 /** Appeals: key `appealId`. Index byExam (examId, status). */

@@ -11,11 +11,13 @@
     "seed:super-admins": "tsx seed-super-admins.ts",
     "smoke:worker": "tsx smoke-worker.ts",
     "try:transcribe": "tsx try-transcribe.ts",
-    "seed:dev-questions": "tsx seed-dev-questions.ts"
+    "seed:dev-questions": "tsx seed-dev-questions.ts",
+    "e2e:pipeline": "tsx e2e-pipeline.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1152.0",
     "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/client-lambda": "^3.1152.0",
     "@aws-sdk/client-s3": "^3.1152.0",
     "@aws-sdk/client-secrets-manager": "^3.1152.0",
     "@aws-sdk/client-sqs": "^3.1152.0",
