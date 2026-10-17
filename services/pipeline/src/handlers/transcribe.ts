@@ -1,5 +1,5 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
+import { ChangeMessageVisibilityCommand, SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import {
   BUCKET_ENV,
   executeMsg,
@@ -16,8 +16,18 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createGeminiClient, type GeminiClient } from '../lib/gemini.js';
 import { loadPromptFile } from '../lib/prompt.js';
+import { GeminiBusyError, redeliveryDelaySeconds } from '../lib/retry.js';
 import { getGeminiApiKey, requireEnv } from '../lib/secret.js';
-import { buildTranscribePrompt, describeError, transcribeImage } from '../lib/transcription.js';
+import {
+  BUSY_MESSAGE,
+  buildTranscribePrompt,
+  describeError,
+  formatAttempt,
+  transcribeImage,
+} from '../lib/transcription.js';
+
+/** Times transcription may end because Gemini is busy before the answer is failed. */
+export const MAX_TRANSCRIBE_TRIES = 3;
 
 export type TranscribeOutcome =
   | { outcome: 'sent'; attempt: number }
@@ -58,7 +68,7 @@ export interface LambdaContext {
 }
 
 export interface SqsRecordEvent {
-  Records: Array<{ body: string }>;
+  Records: Array<{ body: string; receiptHandle?: string }>;
 }
 
 /** Ends the answer as FAILED_TO_GRADE for this attempt. A stale attempt is left alone. */
@@ -94,10 +104,30 @@ async function readImage(bucket: string, key: string): Promise<Uint8Array | unde
   }
 }
 
+/**
+ * Hides this message from the queue for `seconds`, so SQS gives it to a Lambda again then rather
+ * than after the queue's own 12 minutes. If this fails the queue's timeout simply applies.
+ */
+async function hideFor(receiptHandle: string | undefined, seconds: number): Promise<void> {
+  if (!receiptHandle) return;
+  try {
+    await new SQSClient({}).send(
+      new ChangeMessageVisibilityCommand({
+        QueueUrl: requireEnv(QUEUE_ENV.transcribe),
+        ReceiptHandle: receiptHandle,
+        VisibilityTimeout: seconds,
+      }),
+    );
+  } catch (error) {
+    console.error('Could not shorten the wait before the message is delivered again', error);
+  }
+}
+
 async function transcribeOne(
   msg: TranscribeMsg,
   deps: Deps,
   remainingMs: () => number,
+  receiptHandle: string | undefined,
 ): Promise<TranscribeOutcome> {
   const key = {
     examId: msg.examId,
@@ -136,16 +166,34 @@ async function transcribeOne(
     // the client was supplied by a test
   }
 
-  const { verdict } = await transcribeImage({
+  const { verdict, busy, retryDelayMs } = await transcribeImage({
     gemini,
     model: model(),
     prompt,
     image,
     secrets,
     remainingMs,
+    onAttempt: (info) => console.error(formatAttempt(info, secrets)),
     ...(deps.sleep ? { sleep: deps.sleep } : {}),
     ...(deps.random ? { random: deps.random } : {}),
   });
+  if (busy) {
+    // Gemini is rate limited or down. That is not the answer's fault: try again later, and only
+    // give up on the third time.
+    const tries = await answersDb.countTranscribeTry(key, msg.attempt);
+    if (tries === 'stale') return { outcome: 'stale' };
+    if (tries >= MAX_TRANSCRIBE_TRIES) return failAnswer(msg, 'GEMINI_ERROR', BUSY_MESSAGE);
+
+    const wait = redeliveryDelaySeconds(tries, retryDelayMs);
+    console.error(
+      `Gemini is busy (try ${tries} of ${MAX_TRANSCRIBE_TRIES}) for ${msg.examId}/${msg.studentEmail}/q${msg.questionNumber}; the message will be delivered again in ${wait} s`,
+    );
+    await hideFor(receiptHandle, wait);
+    throw new GeminiBusyError(
+      `Gemini is busy (try ${tries} of ${MAX_TRANSCRIBE_TRIES})`,
+      retryDelayMs,
+    );
+  }
   if (!verdict.ok) return failAnswer(msg, verdict.failReason, verdict.detail);
 
   const saved = await answersDb.saveTranscription(key, msg.attempt, verdict.transcription);
@@ -190,9 +238,15 @@ async function transcribeOne(
 }
 
 /**
- * The Transcribe Lambda (SQS trigger, batch size 1). It never throws: any failure marks the
- * answer FAILED_TO_GRADE for the attempt it was working on and the message is deleted, because a
- * FIFO queue with no dead-letter queue would otherwise retry it forever.
+ * The Transcribe Lambda (SQS trigger, batch size 1). Any failure of the answer itself marks it
+ * FAILED_TO_GRADE for the attempt it was working on and the message is deleted, because a FIFO
+ * queue with no dead-letter queue would otherwise retry it forever.
+ *
+ * The one exception is a busy Gemini (429, 5xx, timeouts that outlast the in-call retries): the
+ * handler counts the try on the answer and throws, so the message comes back later. The trigger
+ * must not report partial batch failures (they are off), so a thrown error returns the whole,
+ * one-message batch. After the third busy try the answer is failed as "Transcription service busy,
+ * re-run".
  */
 export function createHandler(overrides: Partial<Deps> = {}) {
   const deps: Deps = { ...defaultDeps, ...overrides };
@@ -216,8 +270,10 @@ export function createHandler(overrides: Partial<Deps> = {}) {
       }
 
       try {
-        outcomes.push(await transcribeOne(msg, deps, remainingMs));
+        outcomes.push(await transcribeOne(msg, deps, remainingMs, record.receiptHandle));
       } catch (error) {
+        // Not a failure of the answer: let the invocation fail so SQS delivers the message again.
+        if (error instanceof GeminiBusyError) throw error;
         let secret = '';
         try {
           secret = await getGeminiApiKey();

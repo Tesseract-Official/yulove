@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   beginAttempt,
   clearOverride,
+  countTranscribeTry,
   getAnswer,
   listAnswersForStudent,
   markFailed,
@@ -71,7 +72,7 @@ describe('beginAttempt', () => {
     expect(input.Key).toEqual(dbKey);
     expect(input.UpdateExpression).toContain('ADD #attempt :one');
     expect(input.UpdateExpression).toContain('#status = :queued');
-    expect(input.UpdateExpression).toContain('REMOVE #failReason, #failDetail');
+    expect(input.UpdateExpression).toContain('REMOVE #failReason, #failDetail, #transcribeTries');
     expect(input.ExpressionAttributeValues).toMatchObject({
       ':one': 1,
       ':queued': 'QUEUED',
@@ -148,6 +149,52 @@ describe('recordAnswerResult: the conditional write', () => {
   });
 });
 
+describe('countTranscribeTry', () => {
+  it('adds one, only for the current attempt, and returns the new count', async () => {
+    ddbMock.on(UpdateCommand).resolves({ Attributes: { transcribeTries: 2 } });
+
+    await expect(countTranscribeTry(key, 3)).resolves.toBe(2);
+
+    const input = lastUpdate();
+    expect(input.Key).toEqual(dbKey);
+    expect(input.UpdateExpression).toBe('ADD #tries :one');
+    expect(input.ConditionExpression).toBe('#attempt = :expectedAttempt');
+    expect(input.ExpressionAttributeValues).toEqual({ ':one': 1, ':expectedAttempt': 3 });
+    expect(input.ReturnValues).toBe('UPDATED_NEW');
+  });
+
+  it("is 'stale' when a newer attempt exists", async () => {
+    ddbMock.on(UpdateCommand).rejects(conditionFailed());
+    await expect(countTranscribeTry(key, 1)).resolves.toBe('stale');
+  });
+
+  it('passes other errors through', async () => {
+    ddbMock.on(UpdateCommand).rejects(new Error('throttled'));
+    await expect(countTranscribeTry(key, 1)).rejects.toThrow('throttled');
+  });
+
+  it('starts again from zero for a new attempt and after any outcome', async () => {
+    ddbMock.on(UpdateCommand).resolves({ Attributes: { attempt: 2 } });
+    await beginAttempt(key);
+    expect(lastUpdate().UpdateExpression).toContain('#transcribeTries');
+    expect(lastUpdate().UpdateExpression).toMatch(/REMOVE .*#transcribeTries/);
+
+    ddbMock.on(UpdateCommand).resolves({});
+    await markFailed(key, 2, 'GEMINI_ERROR', 'busy');
+    expect(lastUpdate().UpdateExpression).toContain('#rm_transcribeTries');
+    await saveTranscription(key, 2, {
+      language: 'python',
+      rawTranscription: 'r',
+      correctedCode: 'c',
+      driverCode: 'd',
+      fixes: [],
+      estimatedComplexity: 'O(n)',
+      meetsComplexity: true,
+    });
+    expect(lastUpdate().UpdateExpression).toContain('#rm_transcribeTries');
+  });
+});
+
 describe('other stage writes are guarded by the attempt too', () => {
   it.each([
     ['setAnswerStatus', () => setAnswerStatus(key, 2, 'TRANSCRIBING')],
@@ -191,7 +238,7 @@ describe('other stage writes are guarded by the attempt too', () => {
     expect(lastUpdate().ExpressionAttributeValues).toMatchObject({
       ':failDetail': 'Transcription service busy, re-run',
     });
-    expect(lastUpdate().UpdateExpression).not.toContain('REMOVE');
+    expect(lastUpdate().UpdateExpression).not.toContain('#rm_failDetail');
 
     await markFailed(key, 2, 'GEMINI_ERROR', 'x'.repeat(500));
     const stored = lastUpdate().ExpressionAttributeValues?.[':failDetail'] as string;
@@ -202,7 +249,7 @@ describe('other stage writes are guarded by the attempt too', () => {
   it('markFailed without a detail clears any earlier one', async () => {
     ddbMock.on(UpdateCommand).resolves({});
     await markFailed(key, 2, 'UNREADABLE');
-    expect(lastUpdate().UpdateExpression).toContain('REMOVE #rm_failDetail');
+    expect(lastUpdate().UpdateExpression).toContain('#rm_failDetail');
     expect(lastUpdate().ExpressionAttributeValues).not.toHaveProperty(':failDetail');
   });
 

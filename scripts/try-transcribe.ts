@@ -11,6 +11,7 @@ import { ANSWER_IMAGE_MAX_BYTES, type QuestionItem } from '@yulove/shared';
 import {
   buildTranscribePrompt,
   createGeminiClient,
+  formatAttempt,
   loadPromptFile,
   transcribeImage,
   type GeminiClient,
@@ -110,6 +111,8 @@ export async function loadApiKey(client: SecretsManagerClient): Promise<string> 
 export interface TryResult {
   lines: string[];
   verdict: TranscriptionVerdict;
+  /** True when every call was rate limited or Gemini was unavailable. */
+  busy: boolean;
 }
 
 /** Sends the photo to Gemini the way the Lambda does and describes what the Lambda would do. */
@@ -121,17 +124,34 @@ export async function tryTranscribe(input: {
   promptMarkdown: string;
   driversGuide: string;
   apiKey?: string;
+  /** Called with each line as it happens, so waits can be followed live. */
+  log?: (line: string) => void;
+  /** For tests. */
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
 }): Promise<TryResult> {
+  const lines: string[] = [];
+  const secrets = input.apiKey ? [input.apiKey] : [];
+  const emit = (line: string) => {
+    lines.push(line);
+    input.log?.(line);
+  };
+
   const prompt = buildTranscribePrompt(input.promptMarkdown, input.question, input.driversGuide);
-  const { verdict, reply, calls } = await transcribeImage({
+  const { verdict, reply, calls, busy } = await transcribeImage({
     gemini: input.gemini,
     model: input.model,
     prompt,
     image: input.image,
-    secrets: input.apiKey ? [input.apiKey] : [],
+    secrets,
+    // Every failed call: HTTP status, Google's error status and message (key scrubbed), and what
+    // happens next.
+    onAttempt: (info) => emit(formatAttempt(info, secrets)),
+    ...(input.sleep ? { sleep: input.sleep } : {}),
+    ...(input.random ? { random: input.random } : {}),
   });
 
-  const lines = [`Model ${input.model}; ${calls} call${calls === 1 ? '' : 's'} to Gemini.`];
+  emit(`Model ${input.model}; ${calls} call${calls === 1 ? '' : 's'} to Gemini.`);
   if (reply !== undefined) {
     let shown = reply;
     try {
@@ -139,14 +159,21 @@ export async function tryTranscribe(input: {
     } catch {
       // not JSON: show it as it came
     }
-    lines.push('Gemini replied:', shown);
+    emit('Gemini replied:');
+    emit(shown);
   }
-  lines.push(
-    verdict.ok
-      ? 'VALIDATION: OK. The Lambda would store this and send it to the worker.'
-      : `VALIDATION: FAILED. The Lambda would mark the answer FAILED_TO_GRADE (${verdict.failReason}): ${verdict.detail}`,
-  );
-  return { lines, verdict };
+  if (busy) {
+    emit(
+      'VALIDATION: not reached. Gemini was rate limited or unavailable on every call. The Lambda would put the page back on the queue and try again later, and only after 3 such tries mark it FAILED_TO_GRADE "Transcription service busy, re-run".',
+    );
+  } else {
+    emit(
+      verdict.ok
+        ? 'VALIDATION: OK. The Lambda would store this and send it to the worker.'
+        : `VALIDATION: FAILED. The Lambda would mark the answer FAILED_TO_GRADE (${verdict.failReason}): ${verdict.detail}`,
+    );
+  }
+  return { lines, verdict, busy };
 }
 
 async function main(argv: string[]): Promise<void> {
@@ -172,7 +199,7 @@ async function main(argv: string[]): Promise<void> {
   console.log(
     `Profile ${profile}. Question ${question.questionId} v${question.version} "${question.title}". Calling the real Gemini API...`,
   );
-  const { lines, verdict } = await tryTranscribe({
+  const { verdict } = await tryTranscribe({
     gemini: createGeminiClient(apiKey),
     model,
     question,
@@ -180,8 +207,8 @@ async function main(argv: string[]): Promise<void> {
     promptMarkdown: loadPromptFile(PROMPT_FILE),
     driversGuide: readFileSync(DRIVERS_FILE, 'utf8'),
     apiKey,
+    log: (line) => console.log(line),
   });
-  for (const line of lines) console.log(line);
   if (!verdict.ok) process.exitCode = 1;
 }
 

@@ -38,14 +38,16 @@ export class PipelineStack extends Stack {
     super(scope, id, props);
 
     // Invoked asynchronously by the generate-tests route (and later by the record Lambda).
-    // Gemini can take a while, so the timeout is long; nothing retries on its own because the
-    // handler records its own failures.
+    // Gemini can take a while, so the timeout is long. The handler records its own failures and
+    // returns, except when Gemini is busy (429, 5xx, timeouts): then it throws and Lambda's
+    // asynchronous retries (two, about a minute and two minutes later) run the same event again.
+    // The handler counts those tries on the question and fails the round on the third.
     this.testGenerationFunction = createNodeFunction(this, 'TestGenerationFunction', {
       entry: serviceEntry('pipeline/src/handlers/generate-tests.ts'),
       description: 'Generates test material for a question with Gemini',
       timeout: Duration.minutes(5),
       memorySize: 512,
-      retryAttempts: 0,
+      retryAttempts: 2,
       environment: {
         [TABLE_ENV.Questions]: props.questionsTable.tableName,
         [BUCKET_ENV]: props.bucket.bucketName,
@@ -89,6 +91,8 @@ export class PipelineStack extends Stack {
         [TABLE_ENV.Questions]: props.questionsTable.tableName,
         [BUCKET_ENV]: props.bucket.bucketName,
         [QUEUE_ENV.execute]: props.executeQueue.queueUrl,
+        // To shorten a message's wait before it is delivered again (ChangeMessageVisibility).
+        [QUEUE_ENV.transcribe]: props.transcribeQueue.queueUrl,
         GEMINI_SECRET_NAME,
         GEMINI_MODEL: props.geminiTranscribeModel,
       },
@@ -106,6 +110,8 @@ export class PipelineStack extends Stack {
     });
 
     // The transcribe queue triggers it: one message per invocation, never more than 5 at once.
+    // Partial batch responses (reportBatchItemFailures) are deliberately left off: when Gemini is
+    // busy the handler throws, and with a batch of one that returns the message to the queue.
     // That bounds Gemini traffic and leaves the rest of the account's Lambda concurrency (a quota
     // of 10 in total, which is too low to reserve any) to the API. This also grants receiving,
     // deleting and reading attributes of that queue, and nothing else on it.

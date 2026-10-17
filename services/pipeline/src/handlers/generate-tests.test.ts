@@ -2,15 +2,23 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { executeMsg, type QuestionItem } from '@yulove/shared';
+import { questionsDb } from '@yulove/shared/server';
 import { FakeDb } from '@yulove/shared/testing';
 import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { GeminiClient, GenerateJsonRequest } from '../lib/gemini.js';
+import { GeminiApiError, type GeminiClient, type GenerateJsonRequest } from '../lib/gemini.js';
+import { GeminiBusyError } from '../lib/retry.js';
 import { loadPromptFile } from '../lib/prompt.js';
 import { resetGeminiApiKeyCache } from '../lib/secret.js';
 import { GENERATE_RESPONSE_SCHEMA, REGENERATE_RESPONSE_SCHEMA } from '../lib/responses.js';
 import { PROMPT_FILE } from '../test-utils/paths.js';
-import { createHandler, MAX_REGENERATION_ROUNDS } from './generate-tests.js';
+import {
+  BUSY_REASON,
+  createHandler,
+  GEMINI_CALL_TIMEOUT_MS,
+  MAX_BUSY_TRIES,
+  MAX_REGENERATION_ROUNDS,
+} from './generate-tests.js';
 
 const db = new FakeDb();
 const s3 = mockClient(S3Client);
@@ -558,5 +566,229 @@ describe('regenerate mode', () => {
 
     expect(result.outcome).toBe('failed');
     expect(stored()).toMatchObject({ testStatus: 'GENERATION_FAILED', testAttempt: 3 });
+  });
+});
+
+describe('a busy Gemini', () => {
+  const RETRY_INFO = 'type.googleapis.com/google.rpc.RetryInfo';
+  const rateLimited = (retryDelay?: string) =>
+    new GeminiApiError(
+      429,
+      JSON.stringify({
+        error: {
+          message: 'Quota exceeded',
+          status: 'RESOURCE_EXHAUSTED',
+          ...(retryDelay ? { details: [{ '@type': RETRY_INFO, retryDelay }] } : {}),
+        },
+      }),
+    );
+  const unavailable = () => new GeminiApiError(503, 'overloaded');
+  const busy =
+    (make: () => Error = () => rateLimited()) =>
+    () =>
+      [1, 2, 3, 4].map(make);
+
+  const sleeps: number[] = [];
+  const handler = (gemini: FakeGemini) =>
+    createHandler({
+      gemini: async () => gemini,
+      prompt: () => loadPromptFile(PROMPT_FILE),
+      sleep: async (ms) => void sleeps.push(ms),
+      random: () => 0.5,
+    });
+
+  beforeEach(() => {
+    sleeps.length = 0;
+  });
+
+  describe('retries inside one invocation', () => {
+    it('waits the delay Google asks for after a 429, then succeeds', async () => {
+      const gemini = new FakeGemini([rateLimited('20s'), validReply()]);
+
+      const result = await handler(gemini)(generateEvent, {
+        getRemainingTimeInMillis: () => 280_000,
+      });
+
+      expect(result).toEqual({ outcome: 'sent', attempt: 1 });
+      expect(sleeps).toEqual([20_250]);
+      expect(gemini.requests).toHaveLength(2);
+      expect(gemini.requests.every((r) => r.timeoutMs === GEMINI_CALL_TIMEOUT_MS)).toBe(true);
+    });
+
+    it('backs off 2 s, 4 s, 8 s when Google gives no delay', async () => {
+      const gemini = new FakeGemini([unavailable(), unavailable(), unavailable(), validReply()]);
+      expect(await handler(gemini)(generateEvent)).toEqual({ outcome: 'sent', attempt: 1 });
+      expect(sleeps).toEqual([2000, 4000, 8000]);
+    });
+
+    it("uses normal backoff when Google's delay does not fit in the time left", async () => {
+      const gemini = new FakeGemini([rateLimited('200s'), validReply()]);
+      await handler(gemini)(generateEvent, { getRemainingTimeInMillis: () => 250_000 });
+      expect(sleeps).toEqual([2000]);
+    });
+
+    it('does not retry a 400', async () => {
+      const gemini = new FakeGemini([new GeminiApiError(400, 'bad request'), validReply()]);
+      const result = await handler(gemini)(generateEvent);
+      expect(result.outcome).toBe('failed');
+      expect(gemini.requests).toHaveLength(1);
+      expect(stored()?.testStatus).toBe('GENERATION_FAILED');
+    });
+  });
+
+  describe('still busy after those retries', () => {
+    it('first time: counts it, keeps the question GENERATING and throws so Lambda runs it again', async () => {
+      const gemini = new FakeGemini(busy()());
+
+      await expect(handler(gemini)(generateEvent)).rejects.toThrow(GeminiBusyError);
+
+      expect(gemini.requests).toHaveLength(4);
+      expect(stored()).toMatchObject({ testStatus: 'GENERATING', testAttempt: 1, testGenTries: 1 });
+      expect(stored()).not.toHaveProperty('testFailure');
+      expect(s3.commandCalls(PutObjectCommand)).toHaveLength(0);
+      expect(sqs.commandCalls(SendMessageCommand)).toHaveLength(0);
+    });
+
+    it('second time: still throws', async () => {
+      db.put('Questions', baseQuestion({ testGenTries: 1 }));
+      await expect(handler(new FakeGemini(busy()()))(generateEvent)).rejects.toThrow(
+        GeminiBusyError,
+      );
+      expect(stored()).toMatchObject({ testStatus: 'GENERATING', testGenTries: 2 });
+    });
+
+    it('third time: GENERATION_FAILED with a plain reason, and no throw', async () => {
+      db.put('Questions', baseQuestion({ testGenTries: MAX_BUSY_TRIES - 1 }));
+
+      const result = await handler(new FakeGemini(busy()()))(generateEvent);
+
+      expect(MAX_BUSY_TRIES).toBe(3);
+      expect(result).toEqual({ outcome: 'failed', reason: BUSY_REASON });
+      expect(stored()).toMatchObject({ testStatus: 'GENERATION_FAILED', testFailure: BUSY_REASON });
+      expect(stored()).not.toHaveProperty('testGenTries');
+    });
+
+    it('runs through the three tries as Lambda would, the third failing the round', async () => {
+      const run = () => handler(new FakeGemini(busy()()))(generateEvent);
+      await expect(run()).rejects.toThrow(GeminiBusyError);
+      await expect(run()).rejects.toThrow(GeminiBusyError);
+      expect(await run()).toMatchObject({ outcome: 'failed', reason: BUSY_REASON });
+    });
+
+    it('succeeds when Gemini recovers on a later try', async () => {
+      await expect(handler(new FakeGemini(busy()()))(generateEvent)).rejects.toThrow(
+        GeminiBusyError,
+      );
+      const result = await handler(new FakeGemini([validReply()]))(generateEvent);
+
+      expect(result).toEqual({ outcome: 'sent', attempt: 1 });
+      expect(sqs.commandCalls(SendMessageCommand)).toHaveLength(1);
+    });
+
+    it.each([
+      ['503', unavailable],
+      ['a timeout', () => Object.assign(new Error('t'), { name: 'AbortError' })],
+    ])('treats %s like a rate limit', async (_name, make) => {
+      await expect(handler(new FakeGemini(busy(make)()))(generateEvent)).rejects.toThrow(
+        GeminiBusyError,
+      );
+      expect(stored()).toMatchObject({ testStatus: 'GENERATING', testGenTries: 1 });
+    });
+
+    it('stops retrying in the call when the Lambda is nearly out of time, and counts the try', async () => {
+      const gemini = new FakeGemini([rateLimited(), validReply()]);
+      await expect(
+        handler(gemini)(generateEvent, { getRemainingTimeInMillis: () => 60_000 }),
+      ).rejects.toThrow(GeminiBusyError);
+      expect(gemini.requests).toHaveLength(1);
+      expect(stored()?.testGenTries).toBe(1);
+    });
+
+    it('does not count or throw for a round that has been replaced', async () => {
+      const gemini = new FakeGemini(busy()());
+      const original = gemini.generateJson.bind(gemini);
+      gemini.generateJson = async (request) => {
+        db.put('Questions', baseQuestion({ testAttempt: 2 }));
+        return original(request);
+      };
+
+      expect(await handler(gemini)(generateEvent)).toEqual({ outcome: 'stale' });
+      expect(stored()).toMatchObject({ testAttempt: 2 });
+      expect(stored()).not.toHaveProperty('testGenTries');
+    });
+
+    it('starts counting again in a new generation round', async () => {
+      db.put('Questions', baseQuestion({ testGenTries: 2 }));
+      expect(await questionsDb.beginGeneration('q1', 1)).toBe(2);
+      expect(stored()).not.toHaveProperty('testGenTries');
+    });
+  });
+
+  describe('failures that are not about Gemini being busy', () => {
+    it.each([
+      ['malformed JSON', ['{"signature": ']],
+      ['a plain error', [new Error('boom')]],
+      ['a 400', [new GeminiApiError(400, 'bad')]],
+    ])('%s fails at once, never throws and is not counted', async (_name, replies) => {
+      const result = await handler(new FakeGemini([...replies]))(generateEvent);
+
+      expect(result.outcome).toBe('failed');
+      expect(stored()?.testStatus).toBe('GENERATION_FAILED');
+      expect(stored()).not.toHaveProperty('testGenTries');
+    });
+  });
+
+  describe('regenerating inputs', () => {
+    const regenerateEvent = {
+      mode: 'regenerate',
+      questionId: 'q1',
+      version: 1,
+      attempt: 2,
+      indexes: [1],
+      reason: 'timed out',
+    };
+
+    beforeEach(() => {
+      db.put('Questions', baseQuestion({ testAttempt: 2, testRegenerations: 1, signature }));
+      const files: Record<string, string> = {
+        'questions/q1/v1/reference.py': 'REFERENCE',
+        'questions/q1/v1/generator.py': 'GENERATOR',
+        'questions/q1/v1/small-inputs.json': JSON.stringify(smallInputs),
+      };
+      s3.on(GetObjectCommand).callsFake((input: { Key: string }) => ({
+        Body: { transformToString: async () => files[input.Key] ?? '' } as never,
+      }));
+    });
+
+    it('honours the delay, then counts busy tries and throws twice', async () => {
+      const gemini = new FakeGemini([
+        rateLimited('5s'),
+        rateLimited('5s'),
+        rateLimited('5s'),
+        rateLimited('5s'),
+      ]);
+      await expect(handler(gemini)(regenerateEvent)).rejects.toThrow(GeminiBusyError);
+      expect(sleeps).toEqual([5250, 5250, 5250]);
+      expect(stored()).toMatchObject({ testStatus: 'GENERATING', testAttempt: 2, testGenTries: 1 });
+    });
+
+    it('fails the round on the third busy try', async () => {
+      db.put(
+        'Questions',
+        baseQuestion({ testAttempt: 2, testRegenerations: 1, signature, testGenTries: 2 }),
+      );
+      const result = await handler(new FakeGemini(busy()()))(regenerateEvent);
+      expect(result).toEqual({ outcome: 'failed', reason: BUSY_REASON });
+      expect(stored()?.testStatus).toBe('GENERATION_FAILED');
+    });
+
+    it('succeeds after a rate limit', async () => {
+      const reply = JSON.stringify({
+        replacements: [{ index: 1, input: JSON.stringify({ nums: [77], target: 77 }) }],
+      });
+      const result = await handler(new FakeGemini([rateLimited(), reply]))(regenerateEvent);
+      expect(result).toEqual({ outcome: 'sent', attempt: 3 });
+      expect(stored()).not.toHaveProperty('testGenTries');
+    });
   });
 });

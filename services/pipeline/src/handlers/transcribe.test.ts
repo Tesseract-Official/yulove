@@ -1,17 +1,19 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
-import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
+import { ChangeMessageVisibilityCommand, SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { executeMsg, type AnswerItem } from '@yulove/shared';
 import { FakeDb } from '@yulove/shared/testing';
 import { mockClient } from 'aws-sdk-client-mock';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { GeminiApiError } from '../lib/gemini.js';
 import { loadPromptFile } from '../lib/prompt.js';
+import { GeminiBusyError } from '../lib/retry.js';
 import { resetGeminiApiKeyCache } from '../lib/secret.js';
 import { BUSY_MESSAGE, TRANSCRIBE_RESPONSE_SCHEMA } from '../lib/transcription.js';
 import { DRIVERS_FILE, TRANSCRIBE_PROMPT_FILE } from '../test-utils/paths.js';
 import { apiError, CODE, DRIVER, goodReply, question, Scripted } from '../test-utils/transcribe.js';
-import { createHandler } from './transcribe.js';
+import { createHandler, MAX_TRANSCRIBE_TRIES } from './transcribe.js';
 
 const db = new FakeDb();
 const s3 = mockClient(S3Client);
@@ -23,6 +25,7 @@ const EXAM = 'exam-1';
 const STUDENT = 's1@college.edu';
 const IMAGE_KEY = 'answers/exam-1/R1/q1.jpg';
 const EXECUTE_QUEUE = 'https://sqs.example/execute.fifo';
+const TRANSCRIBE_QUEUE = 'https://sqs.example/transcribe.fifo';
 
 const answerKey = { examStudent: `${EXAM}#${STUDENT}`, questionNumber: 1 };
 const answer = () => db.get<AnswerItem>('Answers', answerKey);
@@ -65,6 +68,7 @@ beforeEach(() => {
   resetGeminiApiKeyCache();
   process.env['BUCKET_NAME'] = 'bucket';
   process.env['EXECUTE_QUEUE_URL'] = EXECUTE_QUEUE;
+  process.env['TRANSCRIBE_QUEUE_URL'] = TRANSCRIBE_QUEUE;
   process.env['GEMINI_SECRET_NAME'] = 'dsa-judge/gemini-api-key';
   process.env['GEMINI_MODEL'] = 'gemini-transcribe-test';
   secrets.on(GetSecretValueCommand).resolves({ SecretString: API_KEY });
@@ -72,6 +76,7 @@ beforeEach(() => {
     Body: { transformToByteArray: async () => new Uint8Array([0xff, 0xd8, 0xff]) } as never,
   });
   sqs.on(SendMessageCommand).resolves({});
+  sqs.on(ChangeMessageVisibilityCommand).resolves({});
   db.put('Questions', question);
   seedAnswer();
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -255,13 +260,104 @@ describe('Gemini 429 and 5xx errors', () => {
     expect(gemini.requests).toHaveLength(3);
     expect(sleeps).toEqual([2000, 4000]);
   });
+});
 
-  it('a persistent 429: three retries, then "Transcription service busy, re-run"', async () => {
-    const gemini = new Scripted([apiError(429), apiError(429), apiError(429), apiError(429)]);
-    const [outcome] = await handlerFor(gemini)(event());
+const RETRY_INFO = 'type.googleapis.com/google.rpc.RetryInfo';
+/** A 429 the way Google sends it, with an optional RetryInfo. */
+const rateLimited = (retryDelay?: string) =>
+  new GeminiApiError(
+    429,
+    JSON.stringify({
+      error: {
+        code: 429,
+        message: 'Quota exceeded for this model',
+        status: 'RESOURCE_EXHAUSTED',
+        ...(retryDelay ? { details: [{ '@type': RETRY_INFO, retryDelay }] } : {}),
+      },
+    }),
+  );
+
+const busyEvent = (attempt = 1, receiptHandle: string | undefined = 'receipt-1') => ({
+  Records: [
+    { body: JSON.stringify(message(attempt)), ...(receiptHandle ? { receiptHandle } : {}) },
+  ],
+});
+const visibility = () =>
+  sqs.commandCalls(ChangeMessageVisibilityCommand).map((c) => c.args[0].input);
+const rateLimitedFourTimes = (retryDelay?: string) =>
+  new Scripted([1, 2, 3, 4].map(() => rateLimited(retryDelay)));
+
+describe('Google asks for a delay', () => {
+  it('waits as long as Google says (plus a little) when there is time, then succeeds', async () => {
+    const gemini = new Scripted([rateLimited('34s'), goodReply()]);
+    const [outcome] = await handlerFor(gemini)(busyEvent(), {
+      getRemainingTimeInMillis: () => 120_000,
+    });
+
+    expect(outcome).toEqual({ outcome: 'sent', attempt: 1 });
+    expect(sleeps).toEqual([34_250]);
+    expect(answer()).toMatchObject({ status: 'RUNNING' });
+  });
+
+  it('uses fractions of a second', async () => {
+    await handlerFor(new Scripted([rateLimited('0.5s'), goodReply()]))(busyEvent());
+    expect(sleeps).toEqual([750]);
+  });
+
+  it('backs off as usual when Google gives no delay', async () => {
+    await handlerFor(new Scripted([rateLimited(), goodReply()]))(busyEvent());
+    expect(sleeps).toEqual([2000]);
+  });
+
+  it("backs off as usual when Google's delay does not fit in the time left", async () => {
+    // 100 s left; a 70 s wait plus the 50 s a new call may need does not fit, a 2 s backoff does.
+    const gemini = new Scripted([rateLimited('70s'), goodReply()]);
+    await handlerFor(gemini)(busyEvent(), { getRemainingTimeInMillis: () => 100_000 });
+    expect(sleeps).toEqual([2000]);
+    expect(answer()?.status).toBe('RUNNING');
+  });
+
+  it('does not retry at all when nothing fits, and treats Gemini as busy', async () => {
+    const gemini = new Scripted([rateLimited('70s'), goodReply()]);
+    await expect(
+      handlerFor(gemini)(busyEvent(), { getRemainingTimeInMillis: () => 20_000 }),
+    ).rejects.toThrow(GeminiBusyError);
+    expect(gemini.requests).toHaveLength(1);
+    expect(sleeps).toEqual([]);
+  });
+});
+
+describe('Gemini still busy after the retries in one call', () => {
+  it('first time: counts the try, hides the message for 60 s, leaves it TRANSCRIBING and throws', async () => {
+    const gemini = rateLimitedFourTimes();
+
+    await expect(handlerFor(gemini)(busyEvent())).rejects.toThrow(GeminiBusyError);
 
     expect(gemini.requests).toHaveLength(4);
     expect(sleeps).toEqual([2000, 4000, 8000]);
+    expect(answer()).toMatchObject({ attempt: 1, status: 'TRANSCRIBING', transcribeTries: 1 });
+    expect(answer()).not.toHaveProperty('failReason');
+    expect(visibility()).toEqual([
+      { QueueUrl: TRANSCRIBE_QUEUE, ReceiptHandle: 'receipt-1', VisibilityTimeout: 60 },
+    ]);
+    expect(sentToWorker()).toHaveLength(0);
+  });
+
+  it('second time: hides it for 120 s and throws again', async () => {
+    seedAnswer(1, { status: 'TRANSCRIBING', transcribeTries: 1 });
+
+    await expect(handlerFor(rateLimitedFourTimes())(busyEvent())).rejects.toThrow(GeminiBusyError);
+
+    expect(answer()).toMatchObject({ status: 'TRANSCRIBING', transcribeTries: 2 });
+    expect(visibility()[0]?.VisibilityTimeout).toBe(120);
+  });
+
+  it('third time: gives up with "Transcription service busy, re-run" and does not throw', async () => {
+    seedAnswer(1, { status: 'TRANSCRIBING', transcribeTries: MAX_TRANSCRIBE_TRIES - 1 });
+
+    const [outcome] = await handlerFor(rateLimitedFourTimes())(busyEvent());
+
+    expect(MAX_TRANSCRIBE_TRIES).toBe(3);
     expect(outcome).toEqual({
       outcome: 'failed',
       failReason: 'GEMINI_ERROR',
@@ -272,15 +368,110 @@ describe('Gemini 429 and 5xx errors', () => {
       failReason: 'GEMINI_ERROR',
       failDetail: BUSY_MESSAGE,
     });
-    expect(sentToWorker()).toHaveLength(0);
+    expect(answer()).not.toHaveProperty('transcribeTries');
+    expect(visibility()).toHaveLength(0);
   });
 
-  it('retries inside the Lambda time limit only', async () => {
-    const gemini = new Scripted([apiError(429), goodReply()]);
-    const [outcome] = await handlerFor(gemini)(event(), { getRemainingTimeInMillis: () => 20_000 });
+  it('goes through all three tries in turn, then the answer is failed', async () => {
+    const handler = (g: Scripted) => handlerFor(g)(busyEvent());
+    await expect(handler(rateLimitedFourTimes())).rejects.toThrow(GeminiBusyError);
+    await expect(handler(rateLimitedFourTimes())).rejects.toThrow(GeminiBusyError);
+    const [outcome] = await handler(rateLimitedFourTimes());
 
-    expect(gemini.requests).toHaveLength(1);
     expect(outcome).toMatchObject({ outcome: 'failed', detail: BUSY_MESSAGE });
+    expect(visibility().map((v) => v.VisibilityTimeout)).toEqual([60, 120]);
+    expect(answer()?.status).toBe('FAILED_TO_GRADE');
+  });
+
+  it('then succeeds if Gemini recovers on a later try, and forgets the count', async () => {
+    await expect(handlerFor(rateLimitedFourTimes())(busyEvent())).rejects.toThrow(GeminiBusyError);
+    expect(answer()?.transcribeTries).toBe(1);
+
+    const [outcome] = await handlerFor(new Scripted([goodReply()]))(busyEvent());
+
+    expect(outcome).toEqual({ outcome: 'sent', attempt: 1 });
+    expect(answer()).toMatchObject({ status: 'RUNNING' });
+    expect(answer()).not.toHaveProperty('transcribeTries');
+  });
+
+  it('hides the message for as long as Google asked, within 30 s and 5 minutes', async () => {
+    for (const [asked, expected] of [
+      ['90s', 90],
+      ['10s', 30],
+      ['1200s', 300],
+    ] as const) {
+      db.reset();
+      db.put('Questions', question);
+      seedAnswer();
+      sqs.resetHistory();
+      await expect(handlerFor(rateLimitedFourTimes(asked))(busyEvent())).rejects.toThrow(
+        GeminiBusyError,
+      );
+      expect(visibility()[0]?.VisibilityTimeout).toBe(expected);
+    }
+  });
+
+  it.each([
+    ['503', () => apiError(503)],
+    ['500', () => apiError(500)],
+    ['a timeout', () => Object.assign(new Error('timed out'), { name: 'AbortError' })],
+    ['a dropped connection', () => Object.assign(new Error('reset'), { code: 'ECONNRESET' })],
+  ])('treats %s like a rate limit', async (_name, make) => {
+    const gemini = new Scripted([make(), make(), make(), make()]);
+    await expect(handlerFor(gemini)(busyEvent())).rejects.toThrow(GeminiBusyError);
+    expect(answer()).toMatchObject({ status: 'TRANSCRIBING', transcribeTries: 1 });
+  });
+
+  it('still throws when the wait cannot be shortened, and when there is no receipt handle', async () => {
+    sqs.on(ChangeMessageVisibilityCommand).rejects(new Error('denied'));
+    await expect(handlerFor(rateLimitedFourTimes())(busyEvent())).rejects.toThrow(GeminiBusyError);
+
+    sqs.resetHistory();
+    seedAnswer();
+    const noReceipt = { Records: [{ body: JSON.stringify(message(1)) }] };
+    await expect(handlerFor(rateLimitedFourTimes())(noReceipt)).rejects.toThrow(GeminiBusyError);
+    expect(visibility()).toHaveLength(0);
+  });
+
+  it('does not count or throw for a page that has been replaced by a newer attempt', async () => {
+    const gemini = rateLimitedFourTimes();
+    const original = gemini.generateJson.bind(gemini);
+    gemini.generateJson = async (request) => {
+      seedAnswer(2, { status: 'QUEUED' });
+      return original(request);
+    };
+
+    const [outcome] = await handlerFor(gemini)(busyEvent(1));
+
+    expect(outcome).toEqual({ outcome: 'stale' });
+    expect(answer()).toMatchObject({ attempt: 2, status: 'QUEUED' });
+    expect(answer()).not.toHaveProperty('transcribeTries');
+    expect(visibility()).toHaveLength(0);
+  });
+
+  it('a new attempt starts again from zero tries', async () => {
+    seedAnswer(1, { status: 'TRANSCRIBING', transcribeTries: 2 });
+    // The batch manager submits again: attempt 2 (beginAttempt clears the count).
+    seedAnswer(2, { status: 'QUEUED' });
+
+    await expect(handlerFor(rateLimitedFourTimes())(busyEvent(2))).rejects.toThrow(GeminiBusyError);
+    expect(answer()).toMatchObject({ attempt: 2, transcribeTries: 1 });
+  });
+});
+
+describe('failures that are not about Gemini being busy', () => {
+  it.each([
+    ['a 400', () => new Scripted([apiError(400)])],
+    ['an unreadable page', () => new Scripted([goodReply({ readable: false })])],
+    ['malformed JSON', () => new Scripted(['{nope'])],
+    ['an unsupported language', () => new Scripted([goodReply({ language: 'other' })])],
+  ])('%s fails at once, is deleted, and is not counted', async (_name, make) => {
+    const [outcome] = await handlerFor(make())(busyEvent());
+
+    expect(outcome).toMatchObject({ outcome: 'failed' });
+    expect(answer()?.status).toBe('FAILED_TO_GRADE');
+    expect(answer()).not.toHaveProperty('transcribeTries');
+    expect(visibility()).toHaveLength(0);
   });
 });
 

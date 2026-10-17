@@ -8,7 +8,8 @@ import {
 import { z } from 'zod';
 import type { GeminiClient } from './gemini.js';
 import { extractSection, renderPrompt } from './prompt.js';
-import { withRetries } from './retry.js';
+import { retryDelayOf } from './google-error.js';
+import { withRetries, type AttemptInfo } from './retry.js';
 
 /** One call may take this long. */
 export const GEMINI_CALL_TIMEOUT_MS = 40_000;
@@ -177,6 +178,42 @@ export function describeError(
   return text.length > 300 ? `${text.slice(0, 297)}...` : text;
 }
 
+/** One line about a failed call: HTTP status, Google's error status and message, key scrubbed. */
+export function describeApiAttempt(error: unknown, secrets: readonly string[] = []): string {
+  const e = error as {
+    status?: unknown;
+    googleStatus?: unknown;
+    googleMessage?: unknown;
+    message?: unknown;
+    name?: unknown;
+  } | null;
+  let text: string;
+  if (typeof e?.status === 'number') {
+    const google = typeof e.googleStatus === 'string' ? ` ${e.googleStatus}` : '';
+    const message = typeof e.googleMessage === 'string' ? e.googleMessage : String(e.message ?? '');
+    text = `HTTP ${e.status}${google}: ${message}`;
+  } else {
+    text = `${typeof e?.name === 'string' ? e.name : 'Error'}: ${String(e?.message ?? error)}`;
+  }
+  for (const secret of secrets) if (secret) text = text.split(secret).join('[redacted]');
+  text = text.replace(/\s+/g, ' ').trim();
+  return text.length > 300 ? `${text.slice(0, 297)}...` : text;
+}
+
+/** A line for each failed call, saying what Gemini answered and what happens next. */
+export function formatAttempt(info: AttemptInfo, secrets: readonly string[] = []): string {
+  const seconds = (ms: number) => `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)} s`;
+  const head = `Attempt ${info.call}: ${describeApiAttempt(info.error, secrets)}`;
+  if (info.stopped === 'fatal') return `${head} (cannot be retried)`;
+  if (info.stopped === 'tries') return `${head} (no tries left)`;
+  if (info.stopped === 'time') {
+    return `${head}${info.googleDelayMs !== undefined ? ` (Google asks for ${seconds(info.googleDelayMs)})` : ''} (not enough time left to wait, giving up)`;
+  }
+  return info.usedGoogleDelay
+    ? `${head} (Google asks for ${seconds(info.googleDelayMs ?? 0)}; waiting ${seconds(info.nextWaitMs ?? 0)})`
+    : `${head} (${info.googleDelayMs !== undefined ? `Google asks for ${seconds(info.googleDelayMs)}, which does not fit; ` : 'no delay given; '}backing off ${seconds(info.nextWaitMs ?? 0)})`;
+}
+
 export interface TranscribeInput {
   gemini: GeminiClient;
   model: string;
@@ -187,6 +224,8 @@ export interface TranscribeInput {
   remainingMs?: () => number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
+  /** Called after every failed call to Gemini. */
+  onAttempt?: (info: AttemptInfo) => void;
 }
 
 export interface TranscribeResult {
@@ -194,6 +233,14 @@ export interface TranscribeResult {
   /** Gemini's reply text, when it gave one. */
   reply?: string;
   calls: number;
+  /**
+   * True when every try ended in a 429, a 5xx or a timeout, or there was no time to try again:
+   * Gemini is busy, not the answer's fault. `verdict` then says "Transcription service busy,
+   * re-run", for callers that give up at once; the Lambda retries later instead.
+   */
+  busy: boolean;
+  /** The wait Google last asked for, in milliseconds. */
+  retryDelayMs?: number;
 }
 
 /**
@@ -218,16 +265,25 @@ export async function transcribeImage(input: TranscribeInput): Promise<Transcrib
       attemptBudgetMs: GEMINI_CALL_TIMEOUT_MS + SAFETY_MARGIN_MS,
       ...(input.sleep ? { sleep: input.sleep } : {}),
       ...(input.random ? { random: input.random } : {}),
+      ...(input.onAttempt ? { onAttempt: input.onAttempt } : {}),
     },
   );
 
   if (result.value === undefined) {
+    const delay = result.googleDelayMs ?? (result.busy ? retryDelayOf(result.error) : undefined);
     return {
       calls: result.calls,
+      busy: result.busy,
+      ...(delay !== undefined ? { retryDelayMs: delay } : {}),
       verdict: result.fatal
         ? fail('GEMINI_ERROR', describeError(result.error, input.secrets))
         : fail('GEMINI_ERROR', BUSY_MESSAGE),
     };
   }
-  return { calls: result.calls, reply: result.value, verdict: checkTranscription(result.value) };
+  return {
+    calls: result.calls,
+    busy: false,
+    reply: result.value,
+    verdict: checkTranscription(result.value),
+  };
 }

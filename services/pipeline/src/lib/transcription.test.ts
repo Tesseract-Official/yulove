@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { GeminiClient } from './gemini.js';
+import { GeminiApiError, type GeminiClient } from './gemini.js';
 import { extractSection, loadPromptFile, placeholdersIn } from './prompt.js';
 import {
   BUSY_MESSAGE,
   buildTranscribePrompt,
   checkTranscription,
+  describeApiAttempt,
   describeError,
+  formatAttempt,
   normaliseLanguage,
   signatureText,
   TRANSCRIBE_RESPONSE_SCHEMA,
@@ -284,5 +286,103 @@ describe('transcribeImage', () => {
     expect(result.calls).toBe(1);
     expect(result.verdict).toMatchObject({ ok: false, failReason: 'GEMINI_ERROR' });
     expect(result.reply).toBe('{oops');
+  });
+});
+
+const limited = (retryDelay?: string) =>
+  new GeminiApiError(
+    429,
+    JSON.stringify({
+      error: {
+        message: 'Quota exceeded for metric generate_content',
+        status: 'RESOURCE_EXHAUSTED',
+        ...(retryDelay
+          ? {
+              details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay }],
+            }
+          : {}),
+      },
+    }),
+  );
+
+describe('transcribeImage: busy', () => {
+  it('is busy, with the delay Google last asked for, when every try is rate limited', async () => {
+    sleeps.length = 0;
+    const result = await run(new Scripted([1, 2, 3, 4].map(() => limited('9s'))));
+
+    expect(result).toMatchObject({ busy: true, calls: 4, retryDelayMs: 9000 });
+    expect(result.verdict).toEqual({ ok: false, failReason: 'GEMINI_ERROR', detail: BUSY_MESSAGE });
+    expect(sleeps).toEqual([9250, 9250, 9250]);
+  });
+
+  it('is busy after 5xx and timeouts too, but not after a 400 or a bad reply', async () => {
+    expect((await run(new Scripted([503, 503, 503, 503].map(apiError)))).busy).toBe(true);
+    const timeout = () => Object.assign(new Error('t'), { name: 'AbortError' });
+    expect((await run(new Scripted([1, 2, 3, 4].map(timeout)))).busy).toBe(true);
+
+    expect((await run(new Scripted([apiError(400)]))).busy).toBe(false);
+    expect((await run(new Scripted(['{nope']))).busy).toBe(false);
+    expect((await run(new Scripted([goodReply()]))).busy).toBe(false);
+  });
+
+  it('reports each failed call through onAttempt', async () => {
+    const lines: string[] = [];
+    await transcribeImage({
+      gemini: new Scripted([limited('3s'), limited(), goodReply()]),
+      model: 'm',
+      prompt: 'p',
+      image: new Uint8Array([1]),
+      sleep: async () => undefined,
+      random: () => 0.5,
+      secrets: ['KEY'],
+      onAttempt: (info) => lines.push(formatAttempt(info, ['KEY'])),
+    });
+
+    expect(lines).toEqual([
+      'Attempt 1: HTTP 429 RESOURCE_EXHAUSTED: Quota exceeded for metric generate_content (Google asks for 3 s; waiting 3.3 s)',
+      'Attempt 2: HTTP 429 RESOURCE_EXHAUSTED: Quota exceeded for metric generate_content (no delay given; backing off 4 s)',
+    ]);
+  });
+});
+
+describe('describeApiAttempt', () => {
+  it('shows the HTTP status and what Google said', () => {
+    expect(describeApiAttempt(limited())).toBe(
+      'HTTP 429 RESOURCE_EXHAUSTED: Quota exceeded for metric generate_content',
+    );
+    expect(describeApiAttempt(apiError(503))).toBe('HTTP 503: HTTP 503');
+  });
+
+  it('describes errors with no status, scrubs the key and stays on one short line', () => {
+    const text = describeApiAttempt(
+      Object.assign(new Error(`socket hang up\nfor key=KEY ${'x'.repeat(400)}`), {
+        name: 'AbortError',
+      }),
+      ['KEY'],
+    );
+    expect(text).toMatch(/^AbortError: socket hang up for key=\[redacted\]/);
+    expect(text).not.toContain('KEY');
+    expect(text).not.toContain('\n');
+    expect(text.length).toBeLessThanOrEqual(300);
+    expect(describeApiAttempt('plain')).toBe('Error: plain');
+  });
+});
+
+describe('formatAttempt', () => {
+  const line = (info: Parameters<typeof formatAttempt>[0]) => formatAttempt(info, []);
+  const error = limited();
+
+  it("says when Google's delay is too long to wait", () => {
+    expect(
+      line({ call: 2, error, googleDelayMs: 70_000, nextWaitMs: 4000, usedGoogleDelay: false }),
+    ).toMatch(/\(Google asks for 70 s, which does not fit; backing off 4 s\)$/);
+  });
+
+  it('says why it stopped', () => {
+    expect(line({ call: 1, error, stopped: 'fatal' })).toMatch(/\(cannot be retried\)$/);
+    expect(line({ call: 4, error, stopped: 'tries' })).toMatch(/\(no tries left\)$/);
+    expect(line({ call: 1, error, googleDelayMs: 90_000, stopped: 'time' })).toMatch(
+      /Google asks for 90 s\) \(not enough time left to wait, giving up\)$/,
+    );
   });
 });

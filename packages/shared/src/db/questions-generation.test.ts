@@ -5,6 +5,7 @@ import {
   advanceGeneration,
   approveQuestion,
   beginGeneration,
+  countGenerationTry,
   getLatestQuestion,
   markGenerationFailed,
   resetQuestionTests,
@@ -178,5 +179,40 @@ describe('getLatestQuestion', () => {
     db.put('Questions', question({ version: 10, title: 'v10' }));
 
     await expect(getLatestQuestion('q1')).resolves.toMatchObject({ version: 10, title: 'v10' });
+  });
+});
+
+describe('countGenerationTry', () => {
+  beforeEach(() => {
+    db.put('Questions', question({ testStatus: 'GENERATING', testAttempt: 2 }));
+  });
+
+  it('counts tries for the current round', async () => {
+    await expect(countGenerationTry('q1', 1, 2)).resolves.toBe(1);
+    await expect(countGenerationTry('q1', 1, 2)).resolves.toBe(2);
+    expect(stored()?.testGenTries).toBe(2);
+  });
+
+  it("is 'stale' for a round that has been replaced, and does not count it", async () => {
+    await expect(countGenerationTry('q1', 1, 1)).resolves.toBe('stale');
+    expect(stored()).not.toHaveProperty('testGenTries');
+  });
+
+  it('starts again from zero in a new round, after replacing inputs, on failure and on a content reset', async () => {
+    db.put('Questions', question({ testStatus: 'GENERATING', testAttempt: 2, testGenTries: 2 }));
+    await beginGeneration('q1', 1);
+    expect(stored()).not.toHaveProperty('testGenTries');
+
+    db.put('Questions', question({ testStatus: 'GENERATING', testAttempt: 2, testGenTries: 2 }));
+    await advanceGeneration('q1', 1, 2);
+    expect(stored()).not.toHaveProperty('testGenTries');
+
+    db.put('Questions', question({ testStatus: 'GENERATING', testAttempt: 2, testGenTries: 2 }));
+    await markGenerationFailed('q1', 1, 2, 'busy');
+    expect(stored()).not.toHaveProperty('testGenTries');
+
+    db.put('Questions', question({ testStatus: 'GENERATING', testAttempt: 2, testGenTries: 2 }));
+    await resetQuestionTests('q1', 1, { title: 'New' });
+    expect(stored()).not.toHaveProperty('testGenTries');
   });
 });

@@ -60,12 +60,13 @@ describe('PipelineStack', () => {
 describe('PipelineStack: test-generation Lambda', () => {
   const statements = () => statementsOf(TESTGEN);
 
-  it('has a long timeout and no automatic retries', () => {
+  it('has a long timeout and two asynchronous retries (for a busy Gemini)', () => {
     const p = lambdaFor(TESTGEN).properties;
     expect(p['Timeout']).toBe(300);
     expect(p['MemorySize']).toBe(512);
+    template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 1);
     template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
-      MaximumRetryAttempts: 0,
+      MaximumRetryAttempts: 2,
     });
   });
 
@@ -169,6 +170,19 @@ describe('PipelineStack: Transcribe Lambda', () => {
     expect(JSON.stringify(mapping?.Properties.EventSourceArn)).toContain('transcribeQueue');
   });
 
+  it('does not report partial batch failures: a thrown error returns the whole one-message batch', () => {
+    const mapping = Object.values(template.findResources('AWS::Lambda::EventSourceMapping'))[0];
+    expect(mapping?.Properties).not.toHaveProperty('FunctionResponseTypes');
+    expect(mapping?.Properties.BatchSize).toBe(1);
+  });
+
+  it('has no automatic retries of its own: SQS redelivers instead', () => {
+    // Only the test-generation function has an asynchronous invoke config.
+    const configs = Object.values(template.findResources('AWS::Lambda::EventInvokeConfig'));
+    expect(configs).toHaveLength(1);
+    expect(JSON.stringify(configs[0]?.Properties.FunctionName)).toContain('TestGenerationFunction');
+  });
+
   it('takes its model from geminiTranscribeModel and its secret from Secrets Manager', () => {
     expect(lambdaFor(TRANSCRIBE).properties.Environment?.Variables).toMatchObject({
       GEMINI_MODEL: 'gemini-transcribe-test-model',
@@ -177,6 +191,7 @@ describe('PipelineStack: Transcribe Lambda', () => {
       QUESTIONS_TABLE: expect.anything(),
       BUCKET_NAME: expect.anything(),
       EXECUTE_QUEUE_URL: expect.anything(),
+      TRANSCRIBE_QUEUE_URL: expect.anything(),
     });
     // The test-generation function keeps its own model.
     expect(lambdaFor(TESTGEN).properties.Environment?.Variables).toMatchObject({
@@ -230,6 +245,13 @@ describe('PipelineStack: Transcribe Lambda', () => {
       expect.arrayContaining(['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes']),
     );
     expect(consume).not.toContain('sqs:SendMessage');
+    // It can hide a message for longer or shorter (ChangeMessageVisibility) on this queue only.
+    expect(consume).toContain('sqs:ChangeMessageVisibility');
+    expect(
+      sqs
+        .filter((s) => actionsOf(s).includes('sqs:ChangeMessageVisibility'))
+        .every((s) => JSON.stringify(s.Resource).includes('transcribeQueue')),
+    ).toBe(true);
     const send = forQueue('execute').flatMap(actionsOf);
     expect(send).toContain('sqs:SendMessage');
     expect(send.filter((a) => /Receive|Delete/.test(a))).toEqual([]);

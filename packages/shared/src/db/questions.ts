@@ -64,6 +64,7 @@ const TEST_ATTRIBUTES = [
   'signature',
   'testFailure',
   'testRegenerations',
+  'testGenTries',
 ] as const;
 
 export interface UpdateQuestionOptions {
@@ -128,7 +129,7 @@ export async function beginGeneration(
   const update = buildUpdate({
     set: { testStatus: 'GENERATING', testRegenerations: 0 },
     add: { testAttempt: 1 },
-    remove: ['testFailure'],
+    remove: ['testFailure', 'testGenTries'],
   });
   try {
     const out = await docClient().send(
@@ -186,6 +187,35 @@ export function saveSignature(
   return writeForGeneration(questionId, version, attempt, { set: { signature } });
 }
 
+/**
+ * Counts one more time that this round ended because Gemini was busy (rate limited or
+ * unavailable). Only counts for the current round. Returns the new count, or 'stale'.
+ */
+export async function countGenerationTry(
+  questionId: string,
+  version: number,
+  attempt: number,
+): Promise<number | 'stale'> {
+  const update = buildUpdate({ add: { testGenTries: 1 } });
+  try {
+    const out = await docClient().send(
+      new UpdateCommand({
+        TableName: table(),
+        Key: { questionId, version },
+        UpdateExpression: update.expression,
+        ConditionExpression: '#testAttempt = :expectedAttempt',
+        ExpressionAttributeNames: { ...update.names, '#testAttempt': 'testAttempt' },
+        ExpressionAttributeValues: { ...update.values, ':expectedAttempt': attempt },
+        ReturnValues: 'UPDATED_NEW',
+      }),
+    );
+    return out.Attributes?.['testGenTries'] as number;
+  } catch (error) {
+    if (isConditionalCheckFailure(error)) return 'stale';
+    throw error;
+  }
+}
+
 /** Ends the round as GENERATION_FAILED. Only writes if `attempt` is still the current round. */
 export function markGenerationFailed(
   questionId: string,
@@ -195,6 +225,7 @@ export function markGenerationFailed(
 ): Promise<GenerationWrite> {
   return writeForGeneration(questionId, version, attempt, {
     set: { testStatus: 'GENERATION_FAILED', testFailure: reason },
+    remove: ['testGenTries'],
   });
 }
 
@@ -211,7 +242,7 @@ export async function advanceGeneration(
   const update = buildUpdate({
     set: { testStatus: 'GENERATING' },
     add: { testAttempt: 1, testRegenerations: 1 },
-    remove: ['testFailure'],
+    remove: ['testFailure', 'testGenTries'],
   });
   try {
     const out = await docClient().send(

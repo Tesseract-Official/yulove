@@ -62,12 +62,13 @@ export async function beginAttempt(key: AnswerKey, imageKey?: string): Promise<n
   }
   names['#failReason'] = 'failReason';
   names['#failDetail'] = 'failDetail';
+  names['#transcribeTries'] = 'transcribeTries';
 
   const out = await docClient().send(
     new UpdateCommand({
       TableName: table(),
       Key: keyOf(key),
-      UpdateExpression: `SET ${set} ADD #attempt :one REMOVE #failReason, #failDetail`,
+      UpdateExpression: `SET ${set} ADD #attempt :one REMOVE #failReason, #failDetail, #transcribeTries`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
       ReturnValues: 'UPDATED_NEW',
@@ -141,7 +142,36 @@ export function saveTranscription(
   return writeForAttempt(key, attempt, { ...transcription, status: 'RUNNING' }, [
     'failReason',
     'failDetail',
+    'transcribeTries',
   ]);
+}
+
+/**
+ * Counts one more time that transcription ended because Gemini was busy (rate limited or
+ * unavailable). Only counts for the answer's current attempt. Returns the new count, or 'stale'
+ * when a newer attempt exists; the counter starts again with every new attempt.
+ */
+export async function countTranscribeTry(
+  key: AnswerKey,
+  attempt: number,
+): Promise<number | 'stale'> {
+  try {
+    const out = await docClient().send(
+      new UpdateCommand({
+        TableName: table(),
+        Key: keyOf(key),
+        UpdateExpression: 'ADD #tries :one',
+        ConditionExpression: '#attempt = :expectedAttempt',
+        ExpressionAttributeNames: { '#tries': 'transcribeTries', '#attempt': 'attempt' },
+        ExpressionAttributeValues: { ':one': 1, ':expectedAttempt': attempt },
+        ReturnValues: 'UPDATED_NEW',
+      }),
+    );
+    return out.Attributes?.['transcribeTries'] as number;
+  } catch (error) {
+    if (isConditionalCheckFailure(error)) return 'stale';
+    throw error;
+  }
 }
 
 /** Longest failure explanation that is stored. */
@@ -161,7 +191,7 @@ export function markFailed(
     key,
     attempt,
     { status: 'FAILED_TO_GRADE', failReason, failDetail: failDetail || undefined },
-    failDetail ? [] : ['failDetail'],
+    ['transcribeTries', ...(failDetail ? [] : ['failDetail'])],
   );
 }
 
@@ -185,6 +215,7 @@ export function recordAnswerResult(
   return writeForAttempt(key, attempt, { ...result, status: 'GRADED' }, [
     'failReason',
     'failDetail',
+    'transcribeTries',
   ]);
 }
 

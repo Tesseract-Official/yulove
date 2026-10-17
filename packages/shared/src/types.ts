@@ -74,6 +74,8 @@ export interface QuestionItem {
   testRegenerations?: number;
   /** Why the last generation failed, shown to the teacher. */
   testFailure?: string;
+  /** How many times this generation round ended because Gemini was busy. */
+  testGenTries?: number;
   /** Sample question written by scripts/seed-dev-questions.ts; never real exam content. */
   dev?: boolean;
 }
@@ -142,6 +144,8 @@ export interface AnswerItem {
   failReason?: FailReason;
   /** A short, readable explanation for the failure (at most 300 characters). */
   failDetail?: string;
+  /** How many times transcription ended because Gemini was busy; counted per attempt. */
+  transcribeTries?: number;
   language?: Language;
   rawTranscription?: string;
   correctedCode?: string;

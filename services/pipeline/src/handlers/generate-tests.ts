@@ -20,6 +20,7 @@ import {
   parseRegenerated,
   REGENERATE_RESPONSE_SCHEMA,
 } from '../lib/responses.js';
+import { GeminiBusyError, withRetries } from '../lib/retry.js';
 import { getGeminiApiKey, requireEnv } from '../lib/secret.js';
 
 /**
@@ -57,6 +58,21 @@ const eventSchema = z.discriminatedUnion('mode', [
 
 export type TestGenEvent = z.infer<typeof eventSchema>;
 
+/** A Gemini call that has not answered after this long is given up on. */
+export const GEMINI_CALL_TIMEOUT_MS = 150_000;
+const SAFETY_MARGIN_MS = 10_000;
+/** Retries inside one invocation, for 429, 5xx and timeouts. */
+const IN_CALL_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 2_000;
+
+/**
+ * Times a round may end because Gemini is busy (429, 5xx, timeouts that outlast the retries in
+ * one invocation) before it is marked GENERATION_FAILED. Between tries the handler throws, and
+ * Lambda's asynchronous retries (two, about a minute and two minutes later) run it again.
+ */
+export const MAX_BUSY_TRIES = 3;
+export const BUSY_REASON = 'Gemini is busy right now, try generating again';
+
 export type TestGenOutcome =
   | { outcome: 'sent'; attempt: number }
   | { outcome: 'stale' }
@@ -64,6 +80,9 @@ export type TestGenOutcome =
   | { outcome: 'failed'; reason: string };
 
 export interface Deps {
+  /** For tests: replace the waits between retries. */
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
   /** A Gemini client; the real one reads the API key from Secrets Manager (cached). */
   gemini(): Promise<GeminiClient>;
   /** The prompt file's text. */
@@ -76,6 +95,38 @@ const defaultDeps: Deps = {
   },
   prompt: () => loadPromptFile(),
 };
+
+/**
+ * One Gemini call with retries for 429, 5xx and timeouts. Google's requested delay is honoured
+ * when it fits in the time left. A call that is still failing for those reasons is "busy": it
+ * throws GeminiBusyError. Any other error is thrown as it is.
+ */
+async function askGemini(
+  gemini: GeminiClient,
+  request: Parameters<GeminiClient['generateJson']>[0],
+  deps: Deps,
+  remainingMs: () => number,
+): Promise<string> {
+  const result = await withRetries(
+    () => gemini.generateJson({ ...request, timeoutMs: GEMINI_CALL_TIMEOUT_MS }),
+    {
+      retries: IN_CALL_RETRIES,
+      baseDelayMs: RETRY_BASE_DELAY_MS,
+      remainingMs,
+      attemptBudgetMs: GEMINI_CALL_TIMEOUT_MS + SAFETY_MARGIN_MS,
+      onAttempt: (info) =>
+        console.error(`Gemini call ${info.call} failed: ${String((info.error as Error)?.message)}`),
+      ...(deps.sleep ? { sleep: deps.sleep } : {}),
+      ...(deps.random ? { random: deps.random } : {}),
+    },
+  );
+  if (result.value !== undefined) return result.value;
+  if (result.fatal) throw result.error;
+  throw new GeminiBusyError(
+    `Gemini is busy: ${String((result.error as Error)?.message ?? result.error)}`,
+    result.googleDelayMs,
+  );
+}
 
 const asText = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -169,6 +220,7 @@ async function runGenerate(
   event: Extract<TestGenEvent, { mode: 'generate' }>,
   deps: Deps,
   round: RoundState,
+  remainingMs: () => number,
 ): Promise<TestGenOutcome> {
   const q = await questionsDb.getQuestion(event.questionId, event.version);
   if (!q) return { outcome: 'ignored', reason: 'question not found' };
@@ -178,7 +230,12 @@ async function runGenerate(
   const prompt = renderPrompt(extractSection(deps.prompt(), 'generate'), questionValues(q));
   const gemini = await deps.gemini();
   const generated = parseGenerated(
-    await gemini.generateJson({ model: modelName, prompt, schema: GENERATE_RESPONSE_SCHEMA }),
+    await askGemini(
+      gemini,
+      { model: modelName, prompt, schema: GENERATE_RESPONSE_SCHEMA },
+      deps,
+      remainingMs,
+    ),
   );
 
   // Claim the round before writing files, so a replaced round cannot overwrite a newer one's files.
@@ -204,6 +261,7 @@ async function runRegenerate(
   event: Extract<TestGenEvent, { mode: 'regenerate' }>,
   deps: Deps,
   round: RoundState,
+  remainingMs: () => number,
 ): Promise<TestGenOutcome> {
   if (new Set(event.indexes).size !== event.indexes.length) {
     return { outcome: 'ignored', reason: 'duplicate indexes' };
@@ -238,7 +296,12 @@ async function runRegenerate(
   });
   const gemini = await deps.gemini();
   const regenerated = parseRegenerated(
-    await gemini.generateJson({ model: model(), prompt, schema: REGENERATE_RESPONSE_SCHEMA }),
+    await askGemini(
+      gemini,
+      { model: model(), prompt, schema: REGENERATE_RESPONSE_SCHEMA },
+      deps,
+      remainingMs,
+    ),
     q.signature,
     event.indexes,
     currentSmall,
@@ -257,13 +320,54 @@ async function runRegenerate(
 }
 
 /**
- * The test-generation Lambda. It never throws: any failure marks the question GENERATION_FAILED
- * with a short reason, for the round it was working on.
+ * Gemini is busy. Counts the try for this round; before the third try it throws, so Lambda runs
+ * the same event again later (the question stays GENERATING). On the third it marks the round
+ * GENERATION_FAILED. Returns undefined only if the try could not be counted, so the caller fails
+ * the round the usual way.
+ */
+async function busyOutcome(
+  event: TestGenEvent,
+  round: RoundState,
+  busy: GeminiBusyError,
+): Promise<TestGenOutcome | undefined> {
+  let tries: number | 'stale';
+  try {
+    tries = await questionsDb.countGenerationTry(event.questionId, event.version, round.attempt);
+  } catch (error) {
+    console.error('Could not count a busy try', error);
+    return undefined;
+  }
+  if (tries === 'stale') return { outcome: 'stale' };
+
+  if (tries < MAX_BUSY_TRIES) {
+    console.error(
+      `Gemini is busy (try ${tries} of ${MAX_BUSY_TRIES}) for ${event.questionId} v${event.version}; Lambda will run it again`,
+    );
+    throw busy;
+  }
+  await questionsDb.markGenerationFailed(
+    event.questionId,
+    event.version,
+    round.attempt,
+    BUSY_REASON,
+  );
+  return { outcome: 'failed', reason: BUSY_REASON };
+}
+
+/**
+ * The test-generation Lambda. Any failure marks the question GENERATION_FAILED with a short
+ * reason, for the round it was working on, and returns. The exception is a busy Gemini (429, 5xx,
+ * timeouts that outlast the retries in one invocation): that throws, up to twice, so Lambda's
+ * asynchronous retries run the event again; the third busy try fails the round.
  */
 export function createHandler(overrides: Partial<Deps> = {}) {
   const deps: Deps = { ...defaultDeps, ...overrides };
 
-  return async function handler(raw: unknown): Promise<TestGenOutcome> {
+  return async function handler(
+    raw: unknown,
+    context?: { getRemainingTimeInMillis(): number },
+  ): Promise<TestGenOutcome> {
+    const remainingMs = () => context?.getRemainingTimeInMillis() ?? Number.POSITIVE_INFINITY;
     const parsed = eventSchema.safeParse(raw);
     if (!parsed.success) {
       console.error('Ignoring a malformed test-generation event');
@@ -274,9 +378,13 @@ export function createHandler(overrides: Partial<Deps> = {}) {
 
     try {
       return event.mode === 'generate'
-        ? await runGenerate(event, deps, round)
-        : await runRegenerate(event, deps, round);
+        ? await runGenerate(event, deps, round, remainingMs)
+        : await runRegenerate(event, deps, round, remainingMs);
     } catch (error) {
+      if (error instanceof GeminiBusyError) {
+        const outcome = await busyOutcome(event, round, error);
+        if (outcome) return outcome;
+      }
       const secrets: string[] = [];
       try {
         secrets.push(await getGeminiApiKey());

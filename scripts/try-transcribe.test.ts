@@ -1,7 +1,11 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
-import type { GeminiClient, GenerateJsonRequest } from '@yulove/pipeline/transcribe';
+import {
+  GeminiApiError,
+  type GeminiClient,
+  type GenerateJsonRequest,
+} from '@yulove/pipeline/transcribe';
 import type { QuestionItem } from '@yulove/shared';
 import { mockClient } from 'aws-sdk-client-mock';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -236,6 +240,116 @@ describe('tryTranscribe', () => {
     };
     const { lines } = await tryTranscribe(input(gemini, { apiKey: 'AIza-secret-key' }));
     expect(lines.join('\n')).not.toContain('AIza-secret-key');
+  });
+});
+
+describe('tryTranscribe: why Gemini calls fail', () => {
+  const RETRY_INFO = 'type.googleapis.com/google.rpc.RetryInfo';
+  const limited = (retryDelay?: string, message = 'Quota exceeded for metric X') =>
+    new GeminiApiError(
+      429,
+      JSON.stringify({
+        error: {
+          code: 429,
+          message,
+          status: 'RESOURCE_EXHAUSTED',
+          ...(retryDelay ? { details: [{ '@type': RETRY_INFO, retryDelay }] } : {}),
+        },
+      }),
+    );
+
+  class Scripted implements GeminiClient {
+    calls = 0;
+    constructor(private readonly replies: Array<string | Error>) {}
+    async generateJson() {
+      this.calls += 1;
+      const next = this.replies.shift();
+      if (next === undefined) throw new Error('no reply left');
+      if (next instanceof Error) throw next;
+      return next;
+    }
+  }
+
+  const waits: number[] = [];
+  const run = (gemini: GeminiClient, extra: { apiKey?: string } = {}) => {
+    const live: string[] = [];
+    return tryTranscribe({
+      ...input(gemini, extra),
+      log: (line) => live.push(line),
+      sleep: async (ms) => void waits.push(ms),
+      random: () => 0.5,
+    }).then((result) => ({ ...result, live }));
+  };
+
+  beforeEach(() => {
+    waits.length = 0;
+  });
+
+  it("prints each failed call's HTTP status and Google's error status and message", async () => {
+    const { lines } = await run(new Scripted([limited('3s'), limited(), reply()]));
+
+    expect(lines.slice(0, 2)).toEqual([
+      'Attempt 1: HTTP 429 RESOURCE_EXHAUSTED: Quota exceeded for metric X (Google asks for 3 s; waiting 3.3 s)',
+      'Attempt 2: HTTP 429 RESOURCE_EXHAUSTED: Quota exceeded for metric X (no delay given; backing off 4 s)',
+    ]);
+    expect(waits).toEqual([3250, 4000]);
+    expect(lines.at(-1)).toMatch(/VALIDATION: OK/);
+  });
+
+  it('shows 5xx errors, with the status Google gave', async () => {
+    const down = new GeminiApiError(
+      503,
+      JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'The model is overloaded' } }),
+    );
+    const { lines } = await run(new Scripted([down, reply()]));
+    expect(lines[0]).toMatch(
+      /^Attempt 1: HTTP 503 UNAVAILABLE: The model is overloaded \(no delay given; backing off 2 s\)$/,
+    );
+  });
+
+  it('shows an error that cannot be retried and why the run ends', async () => {
+    const bad = new GeminiApiError(
+      400,
+      JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'API key not valid' } }),
+    );
+    const { lines, verdict, busy } = await run(new Scripted([bad]));
+
+    expect(lines[0]).toBe(
+      'Attempt 1: HTTP 400 INVALID_ARGUMENT: API key not valid (cannot be retried)',
+    );
+    expect(busy).toBe(false);
+    expect(verdict).toMatchObject({ ok: false, failReason: 'GEMINI_ERROR' });
+    expect(lines.at(-1)).toMatch(/VALIDATION: FAILED/);
+  });
+
+  it('when every call is rate limited, says it is busy and what the Lambda would do', async () => {
+    const { lines, busy, verdict } = await run(new Scripted([1, 2, 3, 4].map(() => limited('2s'))));
+
+    expect(busy).toBe(true);
+    expect(lines.filter((l) => l.startsWith('Attempt '))).toHaveLength(4);
+    expect(lines.find((l) => l.startsWith('Attempt 4'))).toMatch(/\(no tries left\)$/);
+    expect(lines.at(-1)).toMatch(
+      /VALIDATION: not reached.*3 such tries.*Transcription service busy, re-run/,
+    );
+    expect(verdict).toMatchObject({ ok: false });
+  });
+
+  it('prints lines as they happen, not only at the end', async () => {
+    const { live, lines } = await run(new Scripted([limited(), reply()]));
+    expect(live).toEqual(lines);
+  });
+
+  it('scrubs the API key from every line', async () => {
+    const leaky = limited(undefined, 'Invalid key AIza-secret-key supplied');
+    const { lines } = await run(
+      new Scripted([leaky, new Error('again AIza-secret-key'), reply()]),
+      {
+        apiKey: 'AIza-secret-key',
+      },
+    );
+
+    expect(lines.join('\n')).not.toContain('AIza-secret-key');
+    expect(lines.join('\n')).toContain('[redacted]');
   });
 });
 
