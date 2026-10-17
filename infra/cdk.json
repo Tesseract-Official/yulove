@@ -5,8 +5,8 @@
     "@aws-cdk/core:defaultCrossStackReferences": "strong",
     "collegeDomain": "medhaviskillsuniversity.edu.in",
     "webOrigin": "http://localhost:5173",
-    "geminiTestgenModel": "gemini-3.8-flash",
-    "geminiTranscribeModel": "gemini-3.8-flash",
+    "geminiTestgenModel": "gemini-3.6-flash",
+    "geminiTranscribeModel": "gemini-3.6-flash",
     "budgetEmail": "ramoliyayug55@gmail.com",
     "superAdminEmails": ["meloovegupta@gmail.com", "ramoliyayug55@gmail.com"]
   }
