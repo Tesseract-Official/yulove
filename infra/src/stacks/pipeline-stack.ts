@@ -12,7 +12,8 @@ import { grantObjects } from '../lib/s3-grants.js';
 import { GEMINI_SECRET_NAME } from './data-stack.js';
 
 export interface PipelineStackProps extends StackProps {
-  geminiModel: string;
+  /** Gemini model for generating tests (the Lambda's GEMINI_MODEL). */
+  geminiTestgenModel: string;
   questionsTable: Table;
   bucket: Bucket;
   executeQueue: Queue;
@@ -40,7 +41,7 @@ export class PipelineStack extends Stack {
         [BUCKET_ENV]: props.bucket.bucketName,
         [QUEUE_ENV.execute]: props.executeQueue.queueUrl,
         GEMINI_SECRET_NAME,
-        GEMINI_MODEL: props.geminiModel,
+        GEMINI_MODEL: props.geminiTestgenModel,
       },
       bundling: {
         // The prompt is read at runtime from next to the bundle.

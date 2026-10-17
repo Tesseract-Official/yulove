@@ -47,7 +47,7 @@ describe('WorkerStack: network', () => {
 
   it('has only private isolated subnets: none hands out public addresses', () => {
     const subnets = Object.values(template.findResources('AWS::EC2::Subnet'));
-    expect(subnets).toHaveLength(2);
+    expect(subnets).toHaveLength(1);
     for (const subnet of subnets) {
       expect(subnet.Properties.MapPublicIpOnLaunch).not.toBe(true);
     }
@@ -79,9 +79,23 @@ describe('WorkerStack: network', () => {
     template.resourceCountIs('AWS::EC2::VPCEndpoint', 5);
   });
 
+  it('uses a single availability zone, with every interface endpoint in that one subnet', () => {
+    const subnets = Object.values(template.findResources('AWS::EC2::Subnet'));
+    expect(subnets).toHaveLength(1);
+    template.resourceCountIs('AWS::EC2::RouteTable', 1);
+
+    const interfaces = Object.values(template.findResources('AWS::EC2::VPCEndpoint')).filter(
+      (endpoint) => endpoint.Properties.VpcEndpointType === 'Interface',
+    );
+    expect(interfaces).toHaveLength(4);
+    for (const endpoint of interfaces) {
+      expect(endpoint.Properties.SubnetIds).toHaveLength(1);
+    }
+  });
+
   it('runs the task in the isolated subnets without a public address', () => {
     template.hasResourceProperties('AWS::ECS::Service', {
-      DesiredCount: 1,
+      DesiredCount: 0,
       LaunchType: 'FARGATE',
       NetworkConfiguration: {
         AwsvpcConfiguration: Match.objectLike({ AssignPublicIp: 'DISABLED' }),
@@ -151,15 +165,132 @@ describe('WorkerStack: the task', () => {
     }
   });
 
-  it('runs one task at a time, starting a replacement before stopping the old one', () => {
+  it('starts switched off and replaces a task before stopping the old one', () => {
     template.hasResourceProperties('AWS::ECS::Service', {
-      DesiredCount: 1,
+      DesiredCount: 0,
       DeploymentConfiguration: Match.objectLike({
         MinimumHealthyPercent: 100,
         MaximumPercent: 200,
         DeploymentCircuitBreaker: { Enable: true, Rollback: true },
       }),
     });
+  });
+});
+
+describe('WorkerStack: scaling to zero', () => {
+  const policies = () =>
+    Object.entries(template.findResources('AWS::ApplicationAutoScaling::ScalingPolicy'));
+  const alarms = () => Object.entries(template.findResources('AWS::CloudWatch::Alarm'));
+  const policyNamed = (fragment: string) => {
+    const found = policies().find(([id]) => id.includes(fragment));
+    if (!found) throw new Error(`No scaling policy ${fragment}`);
+    return found;
+  };
+  const alarmNamed = (name: string) => {
+    const found = alarms().find(([, alarm]) => alarm.Properties.AlarmName === name);
+    if (!found) throw new Error(`No alarm ${name}`);
+    return found[1].Properties;
+  };
+
+  it('lets the ECS service run between 0 and 1 tasks', () => {
+    template.resourceCountIs('AWS::ApplicationAutoScaling::ScalableTarget', 1);
+    template.hasResourceProperties('AWS::ApplicationAutoScaling::ScalableTarget', {
+      MinCapacity: 0,
+      MaxCapacity: 1,
+      ScalableDimension: 'ecs:service:DesiredCount',
+      ServiceNamespace: 'ecs',
+    });
+  });
+
+  it('has exactly two scaling policies, both setting an exact task count', () => {
+    expect(policies()).toHaveLength(2);
+    for (const [, policy] of policies()) {
+      expect(policy.Properties.PolicyType).toBe('StepScaling');
+      expect(policy.Properties.StepScalingPolicyConfiguration.AdjustmentType).toBe('ExactCapacity');
+    }
+  });
+
+  it('scales out to 1 task when a message is waiting', () => {
+    const [outId, out] = policyNamed('ScaleOut');
+    expect(out.Properties.StepScalingPolicyConfiguration.StepAdjustments).toEqual([
+      { MetricIntervalLowerBound: 0, ScalingAdjustment: 1 },
+    ]);
+
+    const alarm = alarmNamed('dsa-judge-worker-queue-has-work');
+    expect(alarm).toMatchObject({
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateNumberOfMessagesVisible',
+      Statistic: 'Maximum',
+      Period: 60,
+      ComparisonOperator: 'GreaterThanThreshold',
+      Threshold: 0,
+      EvaluationPeriods: 1,
+      DatapointsToAlarm: 1,
+      TreatMissingData: 'notBreaching',
+    });
+    expect(JSON.stringify(alarm.Dimensions)).toContain('executeQueue');
+    expect(alarm.AlarmActions).toEqual([{ Ref: outId }]);
+  });
+
+  it('scales in to 0 tasks after 15 minutes in a row with nothing waiting or running', () => {
+    const [inId, scaleIn] = policyNamed('ScaleIn');
+    expect(scaleIn.Properties.StepScalingPolicyConfiguration.StepAdjustments).toEqual([
+      { MetricIntervalUpperBound: 0, ScalingAdjustment: 0 },
+    ]);
+
+    const alarm = alarmNamed('dsa-judge-worker-queue-idle');
+    expect(alarm).toMatchObject({
+      ComparisonOperator: 'LessThanThreshold',
+      Threshold: 1, // fewer than one message = none
+      EvaluationPeriods: 15,
+      DatapointsToAlarm: 15,
+      TreatMissingData: 'missing',
+    });
+    expect(alarm.AlarmActions).toEqual([{ Ref: inId }]);
+  });
+
+  it('measures the idle queue as visible + not visible, with metric math', () => {
+    const { Metrics: metrics } = alarmNamed('dsa-judge-worker-queue-idle') as {
+      Metrics: Array<{
+        Id: string;
+        Expression?: string;
+        ReturnData?: boolean;
+        MetricStat?: {
+          Metric: { MetricName: string; Namespace: string };
+          Period: number;
+          Stat: string;
+        };
+      }>;
+    };
+
+    const expression = metrics.find((m) => m.Expression);
+    expect(expression?.Expression).toBe('waiting + beingProcessed');
+    expect(expression?.ReturnData).not.toBe(false);
+
+    const sources = metrics.filter((m) => m.MetricStat);
+    expect(sources.map((m) => m.MetricStat?.Metric.MetricName).sort()).toEqual([
+      'ApproximateNumberOfMessagesNotVisible',
+      'ApproximateNumberOfMessagesVisible',
+    ]);
+    for (const source of sources) {
+      expect(source.MetricStat?.Metric.Namespace).toBe('AWS/SQS');
+      expect(source.MetricStat?.Period).toBe(60);
+      expect(source.MetricStat?.Stat).toBe('Maximum');
+      expect(source.ReturnData).toBe(false); // only the sum is evaluated
+    }
+    expect(sources.map((m) => m.Id).sort()).toEqual(['beingProcessed', 'waiting']);
+  });
+
+  it('has just those two alarms', () => {
+    expect(alarms()).toHaveLength(2);
+  });
+
+  it('does not let the alarms touch anything but the worker service', () => {
+    for (const [, alarm] of alarms()) {
+      expect(alarm.Properties.AlarmActions).toHaveLength(1);
+      expect(alarm.Properties.OKActions).toBeUndefined();
+      expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
+    }
   });
 });
 

@@ -3,8 +3,10 @@
   "output": "cdk.out",
   "context": {
     "@aws-cdk/core:defaultCrossStackReferences": "strong",
-    "collegeDomain": "<COLLEGE_DOMAIN>",
+    "collegeDomain": "medhaviskillsuniversity.edu.in",
     "webOrigin": "http://localhost:5173",
-    "geminiModel": "<GEMINI_MODEL>"
+    "geminiTestgenModel": "gemini-3.8-flash",
+    "geminiTranscribeModel": "gemini-3.8-flash",
+    "budgetEmail": "<BUDGET_EMAIL>"
   }
 }

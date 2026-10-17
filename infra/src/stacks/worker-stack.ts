@@ -5,6 +5,20 @@ import {
   SubnetType,
   Vpc,
 } from 'aws-cdk-lib/aws-ec2';
+import {
+  AdjustmentType,
+  MetricAggregationType,
+  ScalableTarget,
+  ServiceNamespace,
+  StepScalingAction,
+} from 'aws-cdk-lib/aws-applicationautoscaling';
+import {
+  Alarm,
+  ComparisonOperator,
+  MathExpression,
+  TreatMissingData,
+} from 'aws-cdk-lib/aws-cloudwatch';
+import { ApplicationScalingAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { DockerImageAsset, Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import {
   Cluster,
@@ -32,6 +46,13 @@ export interface WorkerStackProps extends StackProps {
 /** Jobs the worker runs at once. 4 vCPU, and DESIGN.md says one job per vCPU. */
 export const WORKER_CONCURRENCY = 4;
 
+/** The worker is off when there is nothing to do: 0 tasks, or 1 while the queue has work. */
+export const MIN_TASKS = 0;
+export const MAX_TASKS = 1;
+
+/** The worker is switched off after the execute queue has been completely empty this long. */
+export const SCALE_IN_AFTER_EMPTY_MINUTES = 15;
+
 /**
  * The execution worker (docs/DESIGN.md, "Code execution worker"): one Fargate task in a VPC that
  * has no route to the internet. It reaches AWS only through VPC endpoints.
@@ -44,9 +65,10 @@ export class WorkerStack extends Stack {
   constructor(scope: Construct, id: string, props: WorkerStackProps) {
     super(scope, id, props);
 
+    // One availability zone, to keep the fixed cost down (an interface endpoint costs per zone).
     // Isolated subnets only: no public subnets, so no internet gateway, and no NAT gateway.
     this.vpc = new Vpc(this, 'Vpc', {
-      maxAzs: 2,
+      maxAzs: 1,
       natGateways: 0,
       subnetConfiguration: [{ name: 'isolated', subnetType: SubnetType.PRIVATE_ISOLATED }],
     });
@@ -137,7 +159,8 @@ export class WorkerStack extends Stack {
     this.service = new FargateService(this, 'Service', {
       cluster,
       taskDefinition: this.taskDefinition,
-      desiredCount: 1,
+      // Starts switched off; the queue alarms below turn it on when work arrives.
+      desiredCount: MIN_TASKS,
       assignPublicIp: false,
       vpcSubnets: { subnetType: SubnetType.PRIVATE_ISOLATED },
       // Start the new task before stopping the old one when deploying.
@@ -145,5 +168,77 @@ export class WorkerStack extends Stack {
       maxHealthyPercent: 200,
       circuitBreaker: { rollback: true },
     });
+
+    this.addQueueScaling(props.executeQueue);
+  }
+
+  /**
+   * Scale to zero. A task starts when a message is waiting and stops after the queue has been
+   * empty (nothing waiting and nothing being processed) for 15 minutes. The worker finishes the
+   * jobs it has on SIGTERM, and the 15 empty minutes mean nothing is running when it stops.
+   */
+  private addQueueScaling(executeQueue: Queue): void {
+    const target = new ScalableTarget(this, 'ScalableTarget', {
+      serviceNamespace: ServiceNamespace.ECS,
+      scalableDimension: 'ecs:service:DesiredCount',
+      resourceId: `service/${this.service.cluster.clusterName}/${this.service.serviceName}`,
+      minCapacity: MIN_TASKS,
+      maxCapacity: MAX_TASKS,
+    });
+
+    const oneMinute = Duration.minutes(1);
+    const waiting = executeQueue.metricApproximateNumberOfMessagesVisible({
+      period: oneMinute,
+      statistic: 'Maximum',
+    });
+    const beingProcessed = executeQueue.metricApproximateNumberOfMessagesNotVisible({
+      period: oneMinute,
+      statistic: 'Maximum',
+    });
+    const outstanding = new MathExpression({
+      expression: 'waiting + beingProcessed',
+      usingMetrics: { waiting, beingProcessed },
+      period: oneMinute,
+      label: 'Messages waiting or being processed',
+    });
+
+    // Scale out: set the task count to 1 as soon as a message is waiting.
+    const scaleOut = new StepScalingAction(this, 'ScaleOut', {
+      scalingTarget: target,
+      adjustmentType: AdjustmentType.EXACT_CAPACITY,
+      metricAggregationType: MetricAggregationType.MAXIMUM,
+      cooldown: oneMinute,
+    });
+    scaleOut.addAdjustment({ adjustment: MAX_TASKS, lowerBound: 0 });
+    new Alarm(this, 'QueueHasWorkAlarm', {
+      alarmName: 'dsa-judge-worker-queue-has-work',
+      alarmDescription: 'A message is waiting on the execute queue: start the worker.',
+      metric: waiting,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+      threshold: 0,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(new ApplicationScalingAction(scaleOut));
+
+    // Scale in: set the task count to 0 after 15 minutes in a row with nothing waiting and
+    // nothing running. A minute with no data does not count as empty.
+    const scaleIn = new StepScalingAction(this, 'ScaleIn', {
+      scalingTarget: target,
+      adjustmentType: AdjustmentType.EXACT_CAPACITY,
+      metricAggregationType: MetricAggregationType.MAXIMUM,
+      cooldown: oneMinute,
+    });
+    scaleIn.addAdjustment({ adjustment: MIN_TASKS, upperBound: 0 });
+    new Alarm(this, 'QueueIdleAlarm', {
+      alarmName: 'dsa-judge-worker-queue-idle',
+      alarmDescription: `The execute queue has been empty for ${SCALE_IN_AFTER_EMPTY_MINUTES} minutes: stop the worker.`,
+      metric: outstanding,
+      comparisonOperator: ComparisonOperator.LESS_THAN_THRESHOLD,
+      threshold: 1, // fewer than 1 message = none
+      evaluationPeriods: SCALE_IN_AFTER_EMPTY_MINUTES,
+      datapointsToAlarm: SCALE_IN_AFTER_EMPTY_MINUTES,
+      treatMissingData: TreatMissingData.MISSING,
+    }).addAlarmAction(new ApplicationScalingAction(scaleIn));
   }
 }

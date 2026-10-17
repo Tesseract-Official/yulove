@@ -40,7 +40,7 @@ describe('PipelineStack: test-generation Lambda', () => {
           BUCKET_NAME: Match.anyValue(),
           EXECUTE_QUEUE_URL: Match.anyValue(),
           GEMINI_SECRET_NAME: 'dsa-judge/gemini-api-key',
-          GEMINI_MODEL: 'gemini-test-model',
+          GEMINI_MODEL: 'gemini-testgen-test-model',
         },
       },
     });

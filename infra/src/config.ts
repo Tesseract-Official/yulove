@@ -7,8 +7,12 @@ export interface AppConfig {
   collegeDomain: string;
   /** Browser origins allowed to call the API and the bucket, no trailing slash. */
   webOrigins: string[];
-  /** Gemini model used for test generation, e.g. a Pro-tier model with structured output. */
-  geminiModel: string;
+  /** Gemini model that generates a question's tests (GEMINI_MODEL of the test-generation Lambda). */
+  geminiTestgenModel: string;
+  /** Gemini model that transcribes answer photos (used by the transcribe Lambda, built later). */
+  geminiTranscribeModel: string;
+  /** Who is emailed when spending reaches 80% and 100% of the monthly budget. */
+  budgetEmail: string;
 }
 
 function requiredContext(node: Node, key: string): string {
@@ -38,7 +42,15 @@ export function readConfig(node: Node): AppConfig {
     throw new Error('webOrigin must contain at least one origin.');
   }
 
-  const geminiModel = requiredContext(node, 'geminiModel');
+  const geminiTestgenModel = requiredContext(node, 'geminiTestgenModel');
+  const geminiTranscribeModel = requiredContext(node, 'geminiTranscribeModel');
 
-  return { collegeDomain, webOrigins, geminiModel };
+  // A <PLACEHOLDER> is allowed so the app can be synthesised before the real address is known,
+  // but anything else must look like an email address.
+  const budgetEmail = requiredContext(node, 'budgetEmail');
+  if (!/^<.+>$/.test(budgetEmail) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(budgetEmail)) {
+    throw new Error(`budgetEmail must be an email address, got "${budgetEmail}".`);
+  }
+
+  return { collegeDomain, webOrigins, geminiTestgenModel, geminiTranscribeModel, budgetEmail };
 }
