@@ -3,6 +3,7 @@ import { HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { describe, expect, it } from 'vitest';
 import { serviceEntry } from '../lib/handler-paths.js';
 import { buildApp } from '../testing.js';
+import { assetCopyCommands } from './api-stack.js';
 
 const ENTRY = serviceEntry('api/src/handlers/pre-sign-up.ts');
 
@@ -94,5 +95,17 @@ describe('ApiStack.addRoute', () => {
     const fn = Object.values(template.findResources('AWS::Lambda::Function'))[0];
     const vars = (fn?.Properties.Environment?.Variables ?? {}) as Record<string, string>;
     expect(Object.keys(vars).filter((k) => /TABLE|QUEUE|BUCKET/.test(k))).toEqual([]);
+  });
+});
+
+describe('assetCopyCommands', () => {
+  it('copies each folder next to the bundle', () => {
+    expect(
+      assetCopyCommands([{ from: 'services/api/assets/fonts', to: 'fonts' }], '/repo', '/out'),
+    ).toEqual(['mkdir -p "/out/fonts" && cp -r "/repo/services/api/assets/fonts/." "/out/fonts/"']);
+  });
+
+  it('does nothing for no assets', () => {
+    expect(assetCopyCommands([], '/repo', '/out')).toEqual([]);
   });
 });

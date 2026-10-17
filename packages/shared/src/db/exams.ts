@@ -2,7 +2,13 @@ import { GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib
 import { ConflictError } from '../errors.js';
 import { normaliseEmail } from '../identity.js';
 import type { ExamItem } from '../types.js';
-import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
+import {
+  buildUpdate,
+  docClient,
+  isConditionalCheckFailure,
+  queryAll,
+  tableName,
+} from './client.js';
 
 const table = () => tableName('Exams');
 
@@ -27,25 +33,36 @@ export async function createExam(exam: ExamItem): Promise<void> {
   }
 }
 
-export type ExamUpdate = Partial<Omit<ExamItem, 'examId'>>;
+export type ExamUpdate = Partial<Omit<ExamItem, 'examId' | 'createdBy'>>;
 
-/** Updates an existing exam. Returns false when it does not exist. */
-export async function updateExam(examId: string, changes: ExamUpdate): Promise<boolean> {
-  const set = buildSet({
-    ...changes,
-    ...(changes.publishedBy === undefined
-      ? {}
-      : { publishedBy: normaliseEmail(changes.publishedBy) }),
+/**
+ * Updates an existing exam; `remove` lists attributes to delete (such as pdfKey).
+ * Returns false when it does not exist.
+ */
+export async function updateExam(
+  examId: string,
+  changes: ExamUpdate,
+  remove: readonly (keyof ExamItem)[] = [],
+): Promise<boolean> {
+  const update = buildUpdate({
+    set: {
+      ...changes,
+      ...(changes.publishedBy === undefined
+        ? {}
+        : { publishedBy: normaliseEmail(changes.publishedBy) }),
+    },
+    remove,
   });
   try {
     await docClient().send(
       new UpdateCommand({
         TableName: table(),
         Key: { examId },
-        UpdateExpression: set.expression,
+        UpdateExpression: update.expression,
         ConditionExpression: 'attribute_exists(examId)',
-        ExpressionAttributeNames: set.names,
-        ExpressionAttributeValues: set.values,
+        ExpressionAttributeNames: update.names,
+        ExpressionAttributeValues:
+          Object.keys(update.values).length > 0 ? update.values : undefined,
       }),
     );
     return true;

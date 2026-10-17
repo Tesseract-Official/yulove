@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
+  BatchWriteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -47,6 +48,9 @@ export class FakeDb {
   private readonly tables = new Map<TableName, Map<string, Item>>();
   private readonly mock = mockClient(DynamoDBDocumentClient);
 
+  /** Make BatchWriteItem fail with an error ('throw') for tests of the failure path. */
+  batchWriteMode: 'ok' | 'throw' = 'ok';
+
   constructor() {
     for (const name of TABLE_NAMES) {
       this.tables.set(name, new Map());
@@ -55,9 +59,20 @@ export class FakeDb {
     this.install();
   }
 
-  /** Empties every table. */
+  /** Empties every table and puts the behaviour switches back. */
   reset(): void {
     for (const rows of this.tables.values()) rows.clear();
+    this.mock.resetHistory();
+    this.batchWriteMode = 'ok';
+  }
+
+  /** The calls made with one kind of command, e.g. commandCalls(BatchWriteCommand). */
+  commandCalls<T extends { input: object }>(
+    command: new (...args: never[]) => T,
+  ): Array<{ input: object }> {
+    return this.mock
+      .commandCalls(command as never)
+      .map((c) => ({ input: c.args[0].input as object }));
   }
 
   /** The Users table, keyed by email. */
@@ -131,6 +146,22 @@ export class FakeDb {
       if (!this.conditionHolds(input.ConditionExpression, input, existing)) throw conditionFailed();
       this.rows(table).set(key, structuredClone(input.Item));
       return {};
+    });
+
+    this.mock.on(BatchWriteCommand).callsFake((input) => {
+      if (this.batchWriteMode === 'throw') throw new Error('BatchWriteItem failed');
+      for (const [name, requests] of Object.entries(input.RequestItems ?? {})) {
+        const table = this.nameOf(name);
+        for (const request of requests as Array<{ PutRequest?: { Item: Item } }>) {
+          if (request.PutRequest) {
+            this.rows(table).set(
+              this.storageKey(table, request.PutRequest.Item),
+              structuredClone(request.PutRequest.Item),
+            );
+          }
+        }
+      }
+      return { UnprocessedItems: {} };
     });
 
     this.mock.on(UpdateCommand).callsFake((input) => {

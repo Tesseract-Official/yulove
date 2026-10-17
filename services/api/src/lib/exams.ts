@@ -1,0 +1,113 @@
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  type BatchItem,
+  type ExamBody,
+  type ExamItem,
+  type ExamQuestionRef,
+  type QuestionItem,
+} from '@yulove/shared';
+import { batchesDb, examsDb, questionsDb, type AuthContext } from '@yulove/shared/server';
+import { mapLimit } from '@yulove/shared';
+
+export interface ResolvedQuestion {
+  ref: ExamQuestionRef;
+  item: QuestionItem;
+}
+
+const refKey = (ref: Pick<ExamQuestionRef, 'questionId' | 'version'>) =>
+  `${ref.questionId} v${ref.version}`;
+
+/**
+ * Checks everything an exam depends on, and returns the batch and the question versions.
+ *  - the caller may use the batch (403) and it exists (422)
+ *  - every question version exists (422), belongs to the caller unless they are a super admin
+ *    (403) and is APPROVED (422)
+ */
+export async function resolveExamInputs(
+  ctx: AuthContext,
+  body: Pick<ExamBody, 'batchId' | 'questions'>,
+): Promise<{ batch: BatchItem; questions: ResolvedQuestion[] }> {
+  ctx.assertBatchAccess(body.batchId);
+  const batch = await batchesDb.getBatch(body.batchId);
+  if (!batch) throw new ValidationError(`Unknown batch ${body.batchId}`, { batchId: body.batchId });
+
+  const questions = await loadQuestionVersions(body.questions);
+
+  const missing = questions.filter((q) => !q.item).map((q) => refKey(q.ref));
+  if (missing.length > 0) {
+    throw new ValidationError(`Unknown questions: ${missing.join(', ')}`, { missing });
+  }
+  const found = questions as ResolvedQuestion[];
+
+  if (ctx.user.role !== 'SUPER_ADMIN') {
+    const foreign = found.filter((q) => q.item.teacherEmail !== ctx.user.email);
+    if (foreign.length > 0) {
+      throw new ForbiddenError(
+        `These questions belong to another teacher: ${foreign.map((q) => refKey(q.ref)).join(', ')}`,
+      );
+    }
+  }
+
+  const notApproved = found
+    .filter((q) => q.item.testStatus !== 'APPROVED')
+    .map((q) => refKey(q.ref));
+  if (notApproved.length > 0) {
+    throw new ValidationError(
+      `Only approved questions can be used. Not approved: ${notApproved.join(', ')}`,
+      {
+        notApproved,
+      },
+    );
+  }
+  return { batch, questions: found };
+}
+
+/** Each question version of the list (undefined `item` for one that does not exist). */
+export async function loadQuestionVersions(
+  refs: readonly ExamQuestionRef[],
+): Promise<Array<{ ref: ExamQuestionRef; item: QuestionItem | undefined }>> {
+  const items = await mapLimit(refs, 10, (ref) =>
+    questionsDb.getQuestion(ref.questionId, ref.version),
+  );
+  return refs.map((ref, i) => ({ ref, item: items[i] }));
+}
+
+/** The exam, if the caller may manage it: its creator (a teacher) or any super admin. */
+export async function loadManagedExam(ctx: AuthContext, examId: string): Promise<ExamItem> {
+  const exam = await examsDb.getExam(examId);
+  if (!exam) throw new NotFoundError(`No exam ${examId}`);
+  if (ctx.user.role !== 'SUPER_ADMIN') {
+    if (exam.createdBy !== ctx.user.email)
+      throw new ForbiddenError('This exam was created by another teacher');
+    ctx.assertBatchAccess(exam.batchId);
+  }
+  return exam;
+}
+
+/** Same questions, in the same order, with the same marks? */
+export function sameQuestions(
+  a: readonly ExamQuestionRef[],
+  b: readonly ExamQuestionRef[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (q, i) =>
+        q.number === b[i]?.number &&
+        q.questionId === b[i]?.questionId &&
+        q.version === b[i]?.version &&
+        q.marks === b[i]?.marks,
+    )
+  );
+}
+
+/** Just the fields stored in the exam for each question. */
+export const toRefs = (questions: readonly ExamQuestionRef[]): ExamQuestionRef[] =>
+  questions.map(({ number, questionId, version, marks }) => ({
+    number,
+    questionId,
+    version,
+    marks,
+  }));

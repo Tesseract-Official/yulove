@@ -97,7 +97,10 @@ const examQuestionSchema = z.object({
   marks: z.number().positive(),
 });
 
-/** POST /exams and PUT /exams/{id}. Question numbers must be unique. */
+/** Most questions an exam can have. */
+export const MAX_EXAM_QUESTIONS = 50;
+
+/** POST /exams and PUT /exams/{id}. Question numbers must be 1, 2, 3... n, in order. */
 export const examBody = z.object({
   batchId,
   title: nonEmptyText(200),
@@ -105,8 +108,9 @@ export const examBody = z.object({
   questions: z
     .array(examQuestionSchema)
     .min(1)
-    .refine((qs) => new Set(qs.map((q) => q.number)).size === qs.length, {
-      message: 'Question numbers must be unique',
+    .max(MAX_EXAM_QUESTIONS)
+    .refine((qs) => qs.every((q, i) => q.number === i + 1), {
+      message: 'Question numbers must be 1 to n, in order',
     }),
 });
 export type ExamBody = z.infer<typeof examBody>;

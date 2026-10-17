@@ -1,6 +1,6 @@
 import type { Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
-import { ROUTES } from './routes.js';
+import { IMPORT_META_URL_SHIM, ROUTES } from './routes.js';
 import { buildApp } from './testing.js';
 
 type Access = 'none' | 'read' | 'readWrite' | 'write';
@@ -10,8 +10,8 @@ interface Expected {
   /** Access per table; any table not listed must be 'none'. */
   tables: Partial<Record<string, Access>>;
   collegeDomain?: boolean;
-  /** The route may read this key pattern of the bucket, and nothing else in it. */
-  bucketRead?: string;
+  /** The route's access to the bucket: exactly these S3 actions on this key pattern. */
+  bucket?: { actions: string[]; pattern: string; listBucket?: boolean };
   /** The route may invoke the test-generation Lambda, and no other function. */
   invokesTestGeneration?: boolean;
 }
@@ -41,9 +41,40 @@ const EXPECTED: Expected[] = [
   {
     routeKey: 'GET /questions/{id}/tests',
     tables: { Users: 'read', Questions: 'read' },
-    bucketRead: 'questions/*',
+    bucket: { actions: ['s3:GetObject'], pattern: 'questions/*', listBucket: true },
   },
   { routeKey: 'POST /questions/{id}/approve', tables: { Users: 'read', Questions: 'readWrite' } },
+  {
+    routeKey: 'POST /exams',
+    tables: {
+      Users: 'read',
+      Batches: 'read',
+      Questions: 'read',
+      Exams: 'write',
+      ExamStudents: 'write',
+    },
+  },
+  {
+    routeKey: 'PUT /exams/{id}',
+    tables: {
+      Users: 'read',
+      Batches: 'read',
+      Questions: 'read',
+      Exams: 'readWrite',
+      ExamStudents: 'read',
+      Answers: 'read',
+    },
+  },
+  {
+    routeKey: 'POST /exams/{id}/pdf',
+    tables: { Users: 'read', Batches: 'read', Questions: 'read', Exams: 'readWrite' },
+    bucket: { actions: ['s3:PutObject'], pattern: 'exams/*' },
+  },
+  {
+    routeKey: 'GET /exams/{id}/pdf',
+    tables: { Users: 'read', Exams: 'read' },
+    bucket: { actions: ['s3:GetObject'], pattern: 'exams/*' },
+  },
 ];
 
 const TABLES = [
@@ -114,6 +145,31 @@ describe('registered routes', () => {
     template.resourceCountIs('AWS::ApiGatewayV2::Route', EXPECTED.length);
   });
 
+  describe('the exam PDF Lambda', () => {
+    it('has 512 MB and just under API Gateway’s 30 second limit', () => {
+      const { properties } = lambdaFor(template, 'POST /exams/{id}/pdf') as unknown as {
+        properties: { MemorySize: number; Timeout: number };
+      };
+      expect(properties.MemorySize).toBe(512);
+      expect(properties.Timeout).toBe(29);
+    });
+
+    it('is bundled with the fonts and with the shim PDFKit needs in a CommonJS bundle', () => {
+      const route = ROUTES.find((r) => r.path === '/exams/{id}/pdf' && r.method === 'POST');
+      expect(route?.options?.assets).toEqual([{ from: 'services/api/assets/fonts', to: 'fonts' }]);
+      expect(route?.options?.bundling).toBe(IMPORT_META_URL_SHIM);
+      expect(IMPORT_META_URL_SHIM.define).toEqual({ 'import.meta.url': 'import_meta_url' });
+      expect(IMPORT_META_URL_SHIM.banner).toContain('import_meta_url');
+    });
+
+    it('is the only exam route that writes to the bucket', () => {
+      for (const routeKey of ['POST /exams', 'PUT /exams/{id}', 'GET /exams/{id}/pdf']) {
+        const actions = statementsFor(template, routeKey).flatMap(actionsOf);
+        expect(actions.filter((a) => a === 's3:PutObject')).toEqual([]);
+      }
+    });
+  });
+
   describe.each(EXPECTED)('$routeKey', (expected) => {
     const { routeKey } = expected;
 
@@ -141,24 +197,33 @@ describe('registered routes', () => {
     });
 
     it(
-      expected.bucketRead
-        ? `can read only ${expected.bucketRead} in the bucket`
+      expected.bucket
+        ? `can use only ${expected.bucket.actions.join(', ')} on ${expected.bucket.pattern} in the bucket`
         : 'cannot touch the bucket',
       () => {
         const statements = statementsFor(template, routeKey).filter((s) =>
           actionsOf(s).some((a) => a.startsWith('s3:')),
         );
-        if (!expected.bucketRead) {
+        if (!expected.bucket) {
           expect(statements).toEqual([]);
           return;
         }
-        const actions = statements.flatMap(actionsOf).sort();
-        // GetObject on the pattern; ListBucket so a missing file is "not found", not "denied".
-        expect(actions).toEqual(['s3:GetObject', 's3:ListBucket']);
-        const objects = statements.find((s) => actionsOf(s).includes('s3:GetObject'));
-        expect(JSON.stringify(objects?.Resource)).toContain(`/${expected.bucketRead}`);
+        const wanted = [
+          ...expected.bucket.actions,
+          ...(expected.bucket.listBucket ? ['s3:ListBucket'] : []),
+        ].sort();
+        expect(statements.flatMap(actionsOf).sort()).toEqual(wanted);
+
+        const objects = statements.find((s) =>
+          actionsOf(s).includes(expected.bucket!.actions[0] as string),
+        );
+        expect(JSON.stringify(objects?.Resource)).toContain(`/${expected.bucket.pattern}"`);
+        // The resource is the bucket's ARN plus exactly this key pattern: nothing else in the bucket.
+        const parts = (objects?.Resource as { 'Fn::Join': [string, unknown[]] })['Fn::Join'][1];
+        expect(parts.at(-1)).toBe(`/${expected.bucket.pattern}`);
         const list = statements.find((s) => actionsOf(s).includes('s3:ListBucket'));
-        expect(JSON.stringify(list?.Resource)).not.toContain('/*');
+        if (expected.bucket.listBucket) expect(JSON.stringify(list?.Resource)).not.toContain('/*');
+        else expect(list).toBeUndefined();
       },
     );
 
@@ -201,12 +266,13 @@ describe('registered routes', () => {
               Batches: 'BATCHES_TABLE',
               Questions: 'QUESTIONS_TABLE',
               Exams: 'EXAMS_TABLE',
+              ExamStudents: 'EXAM_STUDENTS_TABLE',
               Answers: 'ANSWERS_TABLE',
             })[t as 'Users'],
         )
         .sort();
       expect(vars.filter((v) => v.endsWith('_TABLE')).sort()).toEqual(wantedTables);
-      expect(vars.includes('BUCKET_NAME')).toBe(Boolean(expected.bucketRead));
+      expect(vars.includes('BUCKET_NAME')).toBe(Boolean(expected.bucket));
       expect(vars.includes('TESTGEN_FUNCTION_NAME')).toBe(Boolean(expected.invokesTestGeneration));
       expect(vars.filter((v) => v.endsWith('_QUEUE_URL'))).toEqual([]);
     });

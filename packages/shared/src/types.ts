@@ -91,6 +91,8 @@ export interface ExamItem {
   /** ISO date, YYYY-MM-DD. */
   date: string;
   questions: ExamQuestionRef[];
+  /** Email of the teacher who created the exam; only they (and super admins) manage it. */
+  createdBy: string;
   status: ExamStatus;
   pdfKey?: string;
   publishedBy?: string;

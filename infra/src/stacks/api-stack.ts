@@ -5,7 +5,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import type { UserPool, UserPoolClient } from 'aws-cdk-lib/aws-cognito';
 import type { Table } from 'aws-cdk-lib/aws-dynamodb';
 import type { IFunction } from 'aws-cdk-lib/aws-lambda';
-import type { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import type { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import type { Queue } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
@@ -24,6 +24,11 @@ export interface RoutePermissions {
   bucket?: Access;
   /** Limits `bucket` to keys matching this pattern, e.g. 'questions/*'. Default: the whole bucket. */
   bucketPrefix?: string;
+  /**
+   * Also allow s3:ListBucket (only with `bucketPrefix`), so that reading a missing file is "not
+   * found" rather than "access denied". Off unless a route needs it.
+   */
+  bucketList?: boolean;
   /** Lambdas the route may invoke. Sets the function's name as an environment variable. */
   lambdas?: Partial<Record<FunctionName, 'invoke'>>;
 }
@@ -34,6 +39,22 @@ export interface RouteOptions {
   environment?: Record<string, string>;
   timeout?: Duration;
   memorySize?: number;
+  /** Files or folders (paths from the repository root) to copy next to the bundled handler. */
+  assets?: Array<{ from: string; to: string }>;
+  /** Extra esbuild settings, e.g. `define` and `banner`. */
+  bundling?: NodejsFunctionProps['bundling'];
+}
+
+/** Shell commands that copy `assets` into the bundle's output folder. */
+export function assetCopyCommands(
+  assets: ReadonlyArray<{ from: string; to: string }>,
+  inputDir: string,
+  outputDir: string,
+): string[] {
+  return assets.map(
+    ({ from, to }) =>
+      `mkdir -p "${outputDir}/${to}" && cp -r "${inputDir}/${from}/." "${outputDir}/${to}/"`,
+  );
 }
 
 export interface ApiStackProps extends StackProps {
@@ -119,7 +140,9 @@ export class ApiStack extends Stack {
       grants.push((fn) => {
         const pattern = permissions.bucketPrefix;
         if (pattern) {
-          grantObjects(fn, bucket, access, pattern, { listBucket: access !== 'write' });
+          grantObjects(fn, bucket, access, pattern, {
+            listBucket: permissions.bucketList === true,
+          });
         } else if (access === 'read') bucket.grantRead(fn);
         else if (access === 'write') bucket.grantWrite(fn);
         else bucket.grantReadWrite(fn);
@@ -138,6 +161,23 @@ export class ApiStack extends Stack {
       description: `${method} ${path}`,
       ...(options.timeout ? { timeout: options.timeout } : {}),
       ...(options.memorySize ? { memorySize: options.memorySize } : {}),
+      ...(options.assets || options.bundling
+        ? {
+            bundling: {
+              ...options.bundling,
+              ...(options.assets
+                ? {
+                    commandHooks: {
+                      beforeBundling: () => [],
+                      beforeInstall: () => [],
+                      afterBundling: (inputDir: string, outputDir: string) =>
+                        assetCopyCommands(options.assets ?? [], inputDir, outputDir),
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
     });
     for (const grant of grants) grant(fn);
 

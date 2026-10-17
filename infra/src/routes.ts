@@ -1,3 +1,4 @@
+import { Duration } from 'aws-cdk-lib';
 import { HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { serviceEntry } from './lib/handler-paths.js';
 import type { ApiStack, RouteOptions, RoutePermissions } from './stacks/api-stack.js';
@@ -11,9 +12,20 @@ interface RouteDef {
   permissions: RoutePermissions;
   /** Needs the college domain to validate emails. */
   needsCollegeDomain?: boolean;
+  options?: RouteOptions;
 }
 
 const QUESTIONS_ONLY = 'questions/*';
+const EXAMS_ONLY = 'exams/*';
+
+/**
+ * PDFKit's Node build reads `import.meta.url` when it loads, which does not exist in the CommonJS
+ * bundle esbuild makes. This gives it the bundle's own file URL.
+ */
+export const IMPORT_META_URL_SHIM = {
+  define: { 'import.meta.url': 'import_meta_url' },
+  banner: "const import_meta_url = require('url').pathToFileURL(__filename).href;",
+};
 
 export const ROUTES: readonly RouteDef[] = [
   {
@@ -86,6 +98,7 @@ export const ROUTES: readonly RouteDef[] = [
       tables: { Users: 'read', Questions: 'read' },
       bucket: 'read',
       bucketPrefix: QUESTIONS_ONLY,
+      bucketList: true, // a missing tests.json is "not found", not "denied"
     },
   },
   {
@@ -94,14 +107,74 @@ export const ROUTES: readonly RouteDef[] = [
     handler: 'approve-question',
     permissions: { tables: { Users: 'read', Questions: 'readWrite' } },
   },
+  {
+    method: HttpMethod.POST,
+    path: '/exams',
+    handler: 'create-exam',
+    permissions: {
+      tables: {
+        Users: 'read',
+        Batches: 'read',
+        Questions: 'read',
+        Exams: 'write',
+        ExamStudents: 'write',
+      },
+    },
+  },
+  {
+    // Reads Answers and the exam's students to find out whether the questions are locked.
+    method: HttpMethod.PUT,
+    path: '/exams/{id}',
+    handler: 'update-exam',
+    permissions: {
+      tables: {
+        Users: 'read',
+        Batches: 'read',
+        Questions: 'read',
+        Exams: 'readWrite',
+        ExamStudents: 'read',
+        Answers: 'read',
+      },
+    },
+  },
+  {
+    method: HttpMethod.POST,
+    path: '/exams/{id}/pdf',
+    handler: 'generate-exam-pdf',
+    permissions: {
+      tables: { Users: 'read', Batches: 'read', Questions: 'read', Exams: 'readWrite' },
+      bucket: 'write', // PutObject, only under exams/
+      bucketPrefix: EXAMS_ONLY,
+    },
+    options: {
+      memorySize: 512,
+      timeout: Duration.seconds(29), // API Gateway gives up at 30
+      // The PDF uses these fonts; they sit next to the bundled handler.
+      assets: [{ from: 'services/api/assets/fonts', to: 'fonts' }],
+      bundling: IMPORT_META_URL_SHIM,
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/exams/{id}/pdf',
+    handler: 'get-exam-pdf',
+    permissions: {
+      tables: { Users: 'read', Exams: 'read' },
+      bucket: 'read', // GetObject, only under exams/: the download link is signed with it
+      bucketPrefix: EXAMS_ONLY,
+    },
+  },
 ];
 
 /** Registers every API route on the stack. */
 export function registerRoutes(api: ApiStack, config: { collegeDomain: string }): void {
   for (const route of ROUTES) {
-    const options: RouteOptions = route.needsCollegeDomain
-      ? { environment: { COLLEGE_DOMAIN: config.collegeDomain } }
-      : {};
+    const options: RouteOptions = {
+      ...route.options,
+      ...(route.needsCollegeDomain
+        ? { environment: { COLLEGE_DOMAIN: config.collegeDomain } }
+        : {}),
+    };
     api.addRoute(
       route.method,
       route.path,

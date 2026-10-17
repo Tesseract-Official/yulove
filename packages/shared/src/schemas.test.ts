@@ -144,6 +144,40 @@ describe('request body schemas', () => {
       ],
       ['zero marks', { questions: [{ number: 1, questionId: 'q1', version: 1, marks: 0 }] }],
       ['a bad date', { date: '24/10/2026' }],
+      [
+        'numbers that skip one',
+        {
+          questions: [
+            { number: 1, questionId: 'q1', version: 1, marks: 10 },
+            { number: 3, questionId: 'q2', version: 1, marks: 5 },
+          ],
+        },
+      ],
+      [
+        'numbers out of order',
+        {
+          questions: [
+            { number: 2, questionId: 'q1', version: 1, marks: 10 },
+            { number: 1, questionId: 'q2', version: 1, marks: 5 },
+          ],
+        },
+      ],
+      [
+        'numbers that do not start at 1',
+        { questions: [{ number: 2, questionId: 'q1', version: 1, marks: 10 }] },
+      ],
+      [
+        'more than 50 questions',
+        {
+          questions: Array.from({ length: 51 }, (_, i) => ({
+            number: i + 1,
+            questionId: `q${i}`,
+            version: 1,
+            marks: 1,
+          })),
+        },
+      ],
+      ['marks below zero', { questions: [{ number: 1, questionId: 'q1', version: 1, marks: -1 }] }],
     ])('rejects %s', (_label, change) => {
       expect(examBody.safeParse({ ...validExam, ...change }).success).toBe(false);
     });

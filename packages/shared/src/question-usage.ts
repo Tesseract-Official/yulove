@@ -1,5 +1,6 @@
 import { mapLimit } from './concurrency.js';
 import { hasAnyAnswer } from './db/answers.js';
+import { listExamStudents } from './db/exam-students.js';
 import { listExamsUsingQuestion } from './db/exams.js';
 import { listUsersByBatch } from './db/users.js';
 
@@ -25,6 +26,27 @@ export async function isQuestionVersionFrozen(
       );
       if (found.some(Boolean)) return true;
     }
+  }
+  return false;
+}
+
+/**
+ * Does any student have an answer (any status) in this exam? Looks at the students who have a row
+ * for the exam and at the students of the exam's batch, 25 at a time, and stops at the first hit.
+ * An exam with answers has its questions and marks locked.
+ */
+export async function examHasAnswers(examId: string, batchId: string): Promise<boolean> {
+  const [rows, students] = await Promise.all([listExamStudents(examId), listUsersByBatch(batchId)]);
+  const emails = [
+    ...new Set([
+      ...rows.map((r) => r.studentEmail),
+      ...students.filter((u) => u.role === 'STUDENT').map((u) => u.email),
+    ]),
+  ];
+  for (let i = 0; i < emails.length; i += CHECK_CONCURRENCY) {
+    const chunk = emails.slice(i, i + CHECK_CONCURRENCY);
+    const found = await mapLimit(chunk, CHECK_CONCURRENCY, (email) => hasAnyAnswer(examId, email));
+    if (found.some(Boolean)) return true;
   }
   return false;
 }
