@@ -1,10 +1,5 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
-import {
-  GatewayVpcEndpointAwsService,
-  InterfaceVpcEndpointAwsService,
-  SubnetType,
-  Vpc,
-} from 'aws-cdk-lib/aws-ec2';
+import { SecurityGroup, SubnetType, Vpc } from 'aws-cdk-lib/aws-ec2';
 import {
   AdjustmentType,
   MetricAggregationType,
@@ -54,38 +49,33 @@ export const MAX_TASKS = 1;
 export const SCALE_IN_AFTER_EMPTY_MINUTES = 15;
 
 /**
- * The execution worker (docs/DESIGN.md, "Code execution worker"): one Fargate task in a VPC that
- * has no route to the internet. It reaches AWS only through VPC endpoints.
+ * The execution worker (docs/DESIGN.md, "Code execution worker"): one Fargate task in a public
+ * subnet with a public IP, no NAT gateway and no VPC endpoints, so nothing here costs money while
+ * the worker is scaled to zero. The security group allows no inbound traffic.
  */
 export class WorkerStack extends Stack {
   readonly vpc: Vpc;
+  readonly securityGroup: SecurityGroup;
   readonly taskDefinition: FargateTaskDefinition;
   readonly service: FargateService;
 
   constructor(scope: Construct, id: string, props: WorkerStackProps) {
     super(scope, id, props);
 
-    // One availability zone, to keep the fixed cost down (an interface endpoint costs per zone).
-    // Isolated subnets only: no public subnets, so no internet gateway, and no NAT gateway.
+    // Public subnet only (one zone is enough for one task): the task reaches SQS, S3, ECR and
+    // CloudWatch Logs over the internet gateway through its public IP.
     this.vpc = new Vpc(this, 'Vpc', {
       maxAzs: 1,
       natGateways: 0,
-      subnetConfiguration: [{ name: 'isolated', subnetType: SubnetType.PRIVATE_ISOLATED }],
+      subnetConfiguration: [{ name: 'public', subnetType: SubnetType.PUBLIC }],
     });
 
-    // What the task and the Fargate agent need: queues, logs, and the image (ECR, whose layers
-    // live in S3).
-    this.vpc.addInterfaceEndpoint('SqsEndpoint', { service: InterfaceVpcEndpointAwsService.SQS });
-    this.vpc.addInterfaceEndpoint('LogsEndpoint', {
-      service: InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
+    // Nothing may connect in (no ingress rule is ever added); the task only makes outbound calls.
+    this.securityGroup = new SecurityGroup(this, 'TaskSecurityGroup', {
+      vpc: this.vpc,
+      description: 'Execution worker task: no inbound traffic, all outbound',
+      allowAllOutbound: true,
     });
-    this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
-      service: InterfaceVpcEndpointAwsService.ECR,
-    });
-    this.vpc.addInterfaceEndpoint('EcrDockerEndpoint', {
-      service: InterfaceVpcEndpointAwsService.ECR_DOCKER,
-    });
-    this.vpc.addGatewayEndpoint('S3Endpoint', { service: GatewayVpcEndpointAwsService.S3 });
 
     const cluster = new Cluster(this, 'Cluster', { vpc: this.vpc });
 
@@ -161,8 +151,9 @@ export class WorkerStack extends Stack {
       taskDefinition: this.taskDefinition,
       // Starts switched off; the queue alarms below turn it on when work arrives.
       desiredCount: MIN_TASKS,
-      assignPublicIp: false,
-      vpcSubnets: { subnetType: SubnetType.PRIVATE_ISOLATED },
+      assignPublicIp: true,
+      vpcSubnets: { subnetType: SubnetType.PUBLIC },
+      securityGroups: [this.securityGroup],
       // Start the new task before stopping the old one when deploying.
       minHealthyPercent: 100,
       maxHealthyPercent: 200,

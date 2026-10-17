@@ -65,7 +65,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 | API | API Gateway HTTP API + Lambda, TypeScript on Node.js 22 | Types shared with the React app |
 | Queues | SQS FIFO × 3: transcribe, execute, results | Content-based IDs off; dedup ID includes attempt |
 | AI | Gemini API from Lambda, structured JSON output | API key in Secrets Manager; temperature 0 |
-| Execution | Node.js 22 service in JavaScript, ECS Fargate, 1 task, private subnet | Also runs reference solutions during question setup |
+| Execution | Node.js 22 service in JavaScript, ECS Fargate, 1 task, public subnet with a public IP, scales to zero | Also runs reference solutions during question setup |
 | Storage | DynamoDB (on-demand) + one S3 bucket | No other database |
 | Exam PDF | Lambda with a PDF library (e.g. PDFKit) | Stored in S3, downloaded through a presigned link |
 | Monitoring | CloudWatch logs and two alarms | Oldest-message age on each queue; count of `FAILED_TO_GRADE` per hour |
@@ -140,8 +140,10 @@ One long-running Node.js service, written in JavaScript, on ECS Fargate (one tas
 - process limits stop fork bombs; file-size limits stop disk filling; a wall-clock timeout kills the whole process group;
 - container root filesystem is read-only; only the per-run working directory is writable, and it is deleted after;
 - the child process gets an empty environment, so it can't find the task's AWS credentials;
-- the task sits in a private subnet with no internet route, reaching AWS only through VPC endpoints;
+- the task sits in a public subnet with a public IP and reaches AWS over the internet; its security group allows no inbound traffic and all outbound, so **student code can reach the internet** (see below);
 - the task's IAM role can only read and delete from the execute queue, send to the results queue, read test files in S3, and write test files only under the questions prefix during setup. It has no DynamoDB access, so student code can't touch scores even if it escaped.
+
+**Why the task has internet access.** Private subnets would need a NAT gateway or five VPC endpoints (SQS, CloudWatch Logs, ECR API, ECR Docker, S3), and those cost money every hour even while the worker is scaled to zero. Accepted for the MVP: the code is handwritten on paper and transcribed, so a student is unlikely to write network code that survives that, and the other isolation layers above are unchanged. What internet access adds is a way out for a program that does misbehave, including to anything reachable with the task role's permissions (queues and question tests); that role still has no DynamoDB access. If this stops being acceptable, put the task back in a private subnet with a NAT gateway or endpoints.
 
 If you later want stronger isolation (each run in its own container with networking off), move the worker to ECS on EC2, where the worker can start containers.
 
@@ -250,7 +252,7 @@ The biggest risk is a wrong Gemini step with no human check before results; appe
 | Wrong reference solution | Every expected output for that question is wrong | Teacher reviews signature and sample outputs before approving; questions can't be used until approved |
 | Gemini's driver calls the function wrong | Correct code fails tests | Integrity check that student code is unchanged; failed tests shown to student; re-run on appeal |
 | Complexity judged wrongly | A correct answer gets 0 | Large time-limited tests back the judgment; reviewers see the estimated complexity on appeal |
-| Weaker isolation on Fargate | Malicious code could disrupt the worker | Non-root runner users, process and file limits, no internet, no DynamoDB permission, empty environment |
+| Weaker isolation on Fargate, and the worker has internet access | Malicious code could disrupt the worker or send data out | Non-root runner users, process and file limits, no DynamoDB permission, empty environment |
 | Gemini rate limits in exam week | Transcriptions fail in bursts | Reserved concurrency on the transcribe Lambda (start at 10); failures become `FAILED_TO_GRADE` and re-run cleanly |
 | Noisy CPU timing on shared hosts | A borderline solution flips between pass and TLE | Generous language factors; large tests sized well past the target complexity, not near it |
 

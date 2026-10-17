@@ -34,71 +34,52 @@ const executionStatements = () => roleStatements(/ExecutionRole/);
 const resourceText = (s: Statement) => JSON.stringify(s.Resource);
 
 describe('WorkerStack: network', () => {
-  it('has no NAT gateway and no internet gateway', () => {
+  it('has no VPC endpoints of any kind', () => {
+    template.resourceCountIs('AWS::EC2::VPCEndpoint', 0);
+  });
+
+  it('has no NAT gateway and no Elastic IP', () => {
     template.resourceCountIs('AWS::EC2::NatGateway', 0);
-    template.resourceCountIs('AWS::EC2::InternetGateway', 0);
     template.resourceCountIs('AWS::EC2::EIP', 0);
   });
 
-  it('has no route to the internet at all', () => {
-    const routes = Object.values(template.findResources('AWS::EC2::Route'));
-    expect(routes).toEqual([]);
-  });
-
-  it('has only private isolated subnets: none hands out public addresses', () => {
+  it('has one public subnet with a route to an internet gateway', () => {
     const subnets = Object.values(template.findResources('AWS::EC2::Subnet'));
     expect(subnets).toHaveLength(1);
-    for (const subnet of subnets) {
-      expect(subnet.Properties.MapPublicIpOnLaunch).not.toBe(true);
+    expect(subnets[0]?.Properties.MapPublicIpOnLaunch).toBe(true);
+    template.resourceCountIs('AWS::EC2::InternetGateway', 1);
+    template.hasResourceProperties('AWS::EC2::Route', {
+      DestinationCidrBlock: '0.0.0.0/0',
+      GatewayId: Match.anyValue(),
+    });
+    for (const route of Object.values(template.findResources('AWS::EC2::Route'))) {
+      expect(route.Properties).not.toHaveProperty('NatGatewayId');
     }
   });
 
-  it.each([
-    ['SQS', 'sqs'],
-    ['CloudWatch Logs', 'logs'],
-    ['ECR API', 'ecr.api'],
-    ['ECR Docker', 'ecr.dkr'],
-  ])('has an interface endpoint for %s with private DNS', (_name, suffix) => {
-    template.hasResourceProperties('AWS::EC2::VPCEndpoint', {
-      VpcEndpointType: 'Interface',
-      ServiceName: Match.stringLikeRegexp(`${suffix.replace('.', '\\.')}$`),
-      PrivateDnsEnabled: true,
+  it('has a security group with no inbound rules and all outbound', () => {
+    template.resourceCountIs('AWS::EC2::SecurityGroupIngress', 0);
+    const groups = Object.values(template.findResources('AWS::EC2::SecurityGroup'));
+    expect(groups.length).toBeGreaterThan(0);
+    for (const group of groups) {
+      expect(group.Properties).not.toHaveProperty('SecurityGroupIngress');
+    }
+    template.hasResourceProperties('AWS::EC2::SecurityGroup', {
+      SecurityGroupEgress: [{ CidrIp: '0.0.0.0/0', IpProtocol: '-1' }],
     });
   });
 
-  it('has an S3 gateway endpoint', () => {
-    const gateways = Object.values(template.findResources('AWS::EC2::VPCEndpoint')).filter(
-      (endpoint) => endpoint.Properties.VpcEndpointType === 'Gateway',
-    );
-    expect(gateways).toHaveLength(1);
-    // The service name is built with the region, so look at its text.
-    expect(JSON.stringify(gateways[0]?.Properties.ServiceName)).toMatch(/\.s3"/);
-  });
-
-  it('has exactly those five endpoints', () => {
-    template.resourceCountIs('AWS::EC2::VPCEndpoint', 5);
-  });
-
-  it('uses a single availability zone, with every interface endpoint in that one subnet', () => {
-    const subnets = Object.values(template.findResources('AWS::EC2::Subnet'));
-    expect(subnets).toHaveLength(1);
-    template.resourceCountIs('AWS::EC2::RouteTable', 1);
-
-    const interfaces = Object.values(template.findResources('AWS::EC2::VPCEndpoint')).filter(
-      (endpoint) => endpoint.Properties.VpcEndpointType === 'Interface',
-    );
-    expect(interfaces).toHaveLength(4);
-    for (const endpoint of interfaces) {
-      expect(endpoint.Properties.SubnetIds).toHaveLength(1);
-    }
-  });
-
-  it('runs the task in the isolated subnets without a public address', () => {
+  it('runs the task in the public subnet with a public IP, in that security group', () => {
     template.hasResourceProperties('AWS::ECS::Service', {
       DesiredCount: 0,
       LaunchType: 'FARGATE',
       NetworkConfiguration: {
-        AwsvpcConfiguration: Match.objectLike({ AssignPublicIp: 'DISABLED' }),
+        AwsvpcConfiguration: Match.objectLike({
+          AssignPublicIp: 'ENABLED',
+          SecurityGroups: [
+            { 'Fn::GetAtt': [Match.stringLikeRegexp('^TaskSecurityGroup'), 'GroupId'] },
+          ],
+        }),
       },
     });
   });
