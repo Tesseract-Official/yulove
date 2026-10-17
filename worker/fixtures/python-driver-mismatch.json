@@ -1,0 +1,74 @@
+{
+  "description": "The driver changed the student's code (sum became max). Expect FAILED with DRIVER_MISMATCH.",
+  "kind": "judge",
+  "job": {
+    "language": "python",
+    "timeLimitMs": 1000,
+    "memoryMb": 128,
+    "compareMode": "EXACT",
+    "tests": [
+      {
+        "index": 0,
+        "kind": "small",
+        "input": "{\"nums\":[0]}",
+        "expected": "0"
+      },
+      {
+        "index": 1,
+        "kind": "small",
+        "input": "{\"nums\":[0,1]}",
+        "expected": "1"
+      },
+      {
+        "index": 2,
+        "kind": "small",
+        "input": "{\"nums\":[0,1,2]}",
+        "expected": "3"
+      },
+      {
+        "index": 3,
+        "kind": "small",
+        "input": "{\"nums\":[0,1,2,3]}",
+        "expected": "6"
+      },
+      {
+        "index": 4,
+        "kind": "small",
+        "input": "{\"nums\":[0,1,2,3,4]}",
+        "expected": "10"
+      },
+      {
+        "index": 5,
+        "kind": "small",
+        "input": "{\"nums\":[0,1,2,3,4,5]}",
+        "expected": "15"
+      },
+      {
+        "index": 6,
+        "kind": "small",
+        "input": "{\"nums\":[0,1,2,3,4,5,6]}",
+        "expected": "21"
+      },
+      {
+        "index": 7,
+        "kind": "large",
+        "input": "{\"nums\":[0,1,2,3,4,5,6,7]}",
+        "expected": "28"
+      },
+      {
+        "index": 8,
+        "kind": "large",
+        "input": "{\"nums\":[0,1,2,3,4,5,6,7,8]}",
+        "expected": "36"
+      },
+      {
+        "index": 9,
+        "kind": "large",
+        "input": "{\"nums\":[0,1,2,3,4,5,6,7,8,9]}",
+        "expected": "45"
+      }
+    ],
+    "driverCode": "import json, sys\n\ndef solve(nums):\n    return max(nums)\n\nprint(json.dumps(solve(json.loads(sys.stdin.read())[\"nums\"])))\n",
+    "correctedCode": "def solve(nums):\n    return sum(nums)\n"
+  }
+}

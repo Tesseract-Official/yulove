@@ -1,0 +1,20 @@
+{
+  "description": "Question setup: a generator for 3 large inputs and a reference solution. Expect complete: true with 10 tests.",
+  "kind": "setup",
+  "job": {
+    "referenceCode": "import json, sys\n\ndef solve(nums):\n    return sum(nums)\n\nprint(json.dumps(solve(json.loads(sys.stdin.read())[\"nums\"])))\n",
+    "generatorCode": "import json, sys\n\ni = int(sys.argv[1])\nprint(json.dumps({\"nums\": list(range(1000 * (i + 1)))}))\n",
+    "smallInputs": [
+      "{\"nums\":[]}",
+      "{\"nums\":[0]}",
+      "{\"nums\":[0,1]}",
+      "{\"nums\":[0,1,2]}",
+      "{\"nums\":[0,1,2,3]}",
+      "{\"nums\":[0,1,2,3,4]}",
+      "{\"nums\":[0,1,2,3,4,5]}"
+    ],
+    "largeInputCount": 3,
+    "timeLimitMs": 1000,
+    "memoryMb": 128
+  }
+}

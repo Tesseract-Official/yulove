@@ -9,6 +9,10 @@
   "scripts": {
     "build": "node --check src/index.js",
     "typecheck": "echo 'worker is plain JavaScript: no type check'",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:docker": "bash test-docker.sh"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
   }
 }

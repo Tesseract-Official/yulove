@@ -12,7 +12,8 @@
     "test": "pnpm -r test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "test:worker-docker": "pnpm --filter @yulove/worker test:docker"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
