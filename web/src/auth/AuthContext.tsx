@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useConfig } from '../config/ConfigContext.js';
+import { SESSION_ENDED, canRenew, needsRenewal } from './session.js';
 import {
   buildLogoutUrl,
   createUserManager,
@@ -31,45 +32,14 @@ export interface AuthValue {
   completeSignIn(): Promise<string>;
   /** Forgets the user and signs out of Cognito. */
   signOut(): Promise<void>;
-  /** The ID token for API calls; renewed when expired or when `forceRefresh` is set. */
+  /**
+   * The ID token for API calls. It is renewed with the refresh token when it has expired or is about
+   * to, or when `forceRefresh` is set; null when there is no session or it cannot be renewed.
+   */
   getIdToken(forceRefresh?: boolean): Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
-
-// sessionStorage only, and nothing secret: whether this tab has signed in, and when it last tried
-// to sign in by itself.
-const SIGNED_IN_HINT = 'yulove.signedIn';
-const AUTO_SIGN_IN_AT = 'yulove.autoSignInAt';
-const AUTO_SIGN_IN_GAP_MS = 10_000;
-
-function storage(): Storage | undefined {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-function hasSignedInHint(): boolean {
-  return storage()?.getItem(SIGNED_IN_HINT) === '1';
-}
-
-function setSignedInHint(on: boolean): void {
-  if (on) storage()?.setItem(SIGNED_IN_HINT, '1');
-  else storage()?.removeItem(SIGNED_IN_HINT);
-}
-
-/**
- * True when this tab signed in before and has not just tried to sign in on its own. The in-memory
- * session is gone after a reload; Cognito's session cookie makes the round trip instant. The gap
- * stops a loop if the round trip keeps failing or the person presses Back.
- */
-export function shouldAutoSignIn(now: number = Date.now()): boolean {
-  if (!hasSignedInHint()) return false;
-  const last = Number(storage()?.getItem(AUTO_SIGN_IN_AT) ?? 0);
-  return !(now - last < AUTO_SIGN_IN_GAP_MS);
-}
 
 const defaultNavigate = (url: string) => window.location.assign(url);
 
@@ -90,40 +60,78 @@ export function AuthProvider({ children, client, navigateExternal }: AuthProvide
   const [userId, setUserId] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const callback = useRef<{ key: string; promise: Promise<string> } | null>(null);
+  const renewal = useRef<Promise<User | null> | null>(null);
 
   const apply = useCallback((user: User | null) => {
     setUserId(user?.profile.sub);
     setStatus(user && !user.expired ? 'signedIn' : 'signedOut');
   }, []);
 
+  /**
+   * Renews the stored user with the refresh token. Concurrent callers (StrictMode's double effect,
+   * several API calls at once) share one request. Resolves to null when renewal is impossible or
+   * fails, which means the session is over.
+   */
+  const renew = useCallback((): Promise<User | null> => {
+    renewal.current ??= (async () => {
+      try {
+        const stored = await oidc.getUser();
+        if (!stored || !canRenew(stored)) return null;
+        return await oidc.signinSilent();
+      } catch {
+        return null;
+      } finally {
+        renewal.current = null;
+      }
+    })();
+    return renewal.current;
+  }, [oidc]);
+
+  /** The session cannot be kept: forget it and say so on the landing page. */
+  const endSession = useCallback(async () => {
+    setNotice(SESSION_ENDED);
+    try {
+      await oidc.removeUser();
+    } finally {
+      apply(null);
+    }
+  }, [oidc, apply]);
+
   useEffect(() => {
     let active = true;
     const onLoaded = (user: User) => apply(user);
     const onUnloaded = () => apply(null);
-    const onRenewError = () => {
-      setSignedInHint(false);
-      setNotice('Your session has ended. Sign in again.');
-      void oidc.removeUser();
-    };
+    const onRenewError = () => void endSession();
 
     oidc.events.addUserLoaded(onLoaded);
     oidc.events.addUserUnloaded(onUnloaded);
     oidc.events.addSilentRenewError(onRenewError);
-    void oidc.getUser().then(
-      (user) => active && apply(user),
-      () => active && apply(null),
-    );
+
+    // On startup the user comes back from sessionStorage. A reload within the token's life just
+    // continues; tokens that expired or are about to are renewed first. Only a failed renewal ends
+    // the session. Nobody stored at all is a plain visit, with no message.
+    void (async () => {
+      const user = await oidc.getUser().catch(() => null);
+      if (!active) return;
+      if (!user) return apply(null);
+      if (!needsRenewal(user)) return apply(user);
+
+      const renewed = await renew();
+      if (!active) return;
+      if (renewed) apply(renewed);
+      else await endSession();
+    })();
+
     return () => {
       active = false;
       oidc.events.removeUserLoaded(onLoaded);
       oidc.events.removeUserUnloaded(onUnloaded);
       oidc.events.removeSilentRenewError(onRenewError);
     };
-  }, [oidc, apply]);
+  }, [oidc, apply, renew, endSession]);
 
   const signIn = useCallback(
     async (returnTo = '/') => {
-      storage()?.setItem(AUTO_SIGN_IN_AT, String(Date.now()));
       await oidc.signinRedirect({ state: { returnTo: safeReturnPath(returnTo) } });
     },
     [oidc],
@@ -135,25 +143,18 @@ export function AuthProvider({ children, client, navigateExternal }: AuthProvide
     const key = window.location.search;
     if (callback.current?.key === key) return callback.current.promise;
 
-    const promise = oidc.signinRedirectCallback().then(
-      (user) => {
-        setSignedInHint(true);
-        setNotice(undefined);
-        apply(user);
-        const state = user.state as { returnTo?: unknown } | undefined;
-        return safeReturnPath(state?.returnTo);
-      },
-      (error: unknown) => {
-        setSignedInHint(false);
-        throw error;
-      },
-    );
+    const promise = oidc.signinRedirectCallback().then((user) => {
+      setNotice(undefined);
+      apply(user);
+      const state = user.state as { returnTo?: unknown } | undefined;
+      return safeReturnPath(state?.returnTo);
+    });
     callback.current = { key, promise };
     return promise;
   }, [oidc, apply]);
 
   const signOut = useCallback(async () => {
-    setSignedInHint(false);
+    // Removes the user, and with it the tokens, from sessionStorage.
     await oidc.removeUser();
     goTo(buildLogoutUrl(config));
   }, [oidc, config, goTo]);
@@ -162,16 +163,13 @@ export function AuthProvider({ children, client, navigateExternal }: AuthProvide
     async (forceRefresh = false) => {
       let user = await oidc.getUser();
       if (!user) return null;
-      if (forceRefresh || user.expired) {
-        try {
-          user = await oidc.signinSilent();
-        } catch {
-          return null;
-        }
+      if (forceRefresh || needsRenewal(user)) {
+        user = await renew();
+        if (!user) return null;
       }
-      return user?.id_token ?? null;
+      return user.id_token ?? null;
     },
-    [oidc],
+    [oidc, renew],
   );
 
   const value = useMemo<AuthValue>(

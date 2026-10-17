@@ -6,7 +6,6 @@ import { errorMessage } from '../api/errors.js';
 import { Loading } from '../ui/states.js';
 import { useToast } from '../ui/Toaster.js';
 import { useAuth } from './AuthContext.js';
-import { useAutoSignIn } from './useAutoSignIn.js';
 import { describeSignInError, safeReturnPath } from './userManager.js';
 
 function LandingPage() {
@@ -45,10 +44,8 @@ function LandingPage() {
 /** `/`: the sign-in page, or, once signed in, a redirect to the user's own section. */
 export function LandingRoute() {
   const { status } = useAuth();
-  const signingIn = useAutoSignIn('/');
 
   if (status === 'loading') return <Loading />;
-  if (signingIn) return <Loading label="Signing you in…" />;
   if (status === 'signedIn') {
     return (
       <SessionGate>

@@ -1,4 +1,11 @@
-import { CfnOutput, RemovalPolicy, SecretValue, Stack, type StackProps } from 'aws-cdk-lib';
+import {
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+  SecretValue,
+  Stack,
+  type StackProps,
+} from 'aws-cdk-lib';
 import {
   OAuthScope,
   ProviderAttribute,
@@ -16,6 +23,12 @@ import { createNodeFunction } from '../lib/node-function.js';
 
 /** Secrets Manager secret holding JSON {"clientId": "...", "clientSecret": "..."}; created by hand. */
 export const GOOGLE_OAUTH_SECRET_NAME = 'dsa-judge/google-oauth';
+
+/** How long the web app's tokens last. The API checks the ID token, so it is renewed hourly. */
+export const ID_TOKEN_VALIDITY = Duration.hours(1);
+export const ACCESS_TOKEN_VALIDITY = Duration.hours(1);
+/** The longest a sign-in lasts without going through Google again. */
+export const REFRESH_TOKEN_VALIDITY = Duration.days(1);
 
 export interface AuthStackProps extends StackProps {
   collegeDomain: string;
@@ -75,6 +88,16 @@ export class AuthStack extends Stack {
     // Public SPA client: no secret, authorization code grant (PKCE is required for public clients).
     this.userPoolClient = this.userPool.addClient('SpaClient', {
       generateSecret: false,
+      // The web app keeps people signed in across reloads by renewing its tokens with the refresh
+      // token (a refresh_token grant at the token endpoint). Refresh tokens are not rotated, so
+      // their validity is also the longest a session can last: one day. No password sign-in is
+      // used, so ALLOW_REFRESH_TOKEN_AUTH is the only auth flow enabled.
+      // (CDK ignores an empty object, so one flag is spelled out to get the explicit list.)
+      authFlows: { userSrp: false },
+      idTokenValidity: ID_TOKEN_VALIDITY,
+      accessTokenValidity: ACCESS_TOKEN_VALIDITY,
+      refreshTokenValidity: REFRESH_TOKEN_VALIDITY,
+      enableTokenRevocation: true,
       supportedIdentityProviders: [UserPoolClientIdentityProvider.GOOGLE],
       oAuth: {
         flows: { authorizationCodeGrant: true },

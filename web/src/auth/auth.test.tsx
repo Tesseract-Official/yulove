@@ -7,6 +7,7 @@ import {
   FakeOidc,
   fakeUser,
   jsonResponse,
+  jwt,
   meFor,
   renderApp,
   stubApi,
@@ -92,40 +93,20 @@ describe('sign-out', () => {
   });
 });
 
-describe('signing in again after a reload', () => {
-  it('goes straight back through Cognito when this tab signed in before', async () => {
-    window.sessionStorage.setItem('yulove.signedIn', '1');
-    const oidc = new FakeOidc();
-
-    renderApp({ route: '/teacher', oidc });
-
-    await waitFor(() =>
-      expect(oidc.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: '/teacher' } }),
-    );
-    expect(screen.queryByRole('button', { name: 'Sign in with Google' })).not.toBeInTheDocument();
-  });
-
-  it('does not loop when it just tried', async () => {
-    window.sessionStorage.setItem('yulove.signedIn', '1');
-    window.sessionStorage.setItem('yulove.autoSignInAt', String(Date.now()));
+describe('a visitor who is not signed in', () => {
+  it('waits for a click, with no redirect and no message', async () => {
     const oidc = new FakeOidc();
 
     renderApp({ oidc });
 
     expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument();
     expect(oidc.signinRedirect).not.toHaveBeenCalled();
+    expect(screen.queryByText('Your session has ended. Sign in again.')).not.toBeInTheDocument();
   });
+});
 
-  it('waits for a click in a tab that never signed in', async () => {
-    const oidc = new FakeOidc();
-
-    renderApp({ oidc });
-
-    expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument();
-    expect(oidc.signinRedirect).not.toHaveBeenCalled();
-  });
-
-  it('returns to the landing page with a notice when the session cannot be renewed', async () => {
+describe('a session that cannot be renewed while the app is open', () => {
+  it('returns to the landing page with a message', async () => {
     stubApi(() => jsonResponse(meFor('STUDENT')));
     const oidc = new FakeOidc(fakeUser());
 
@@ -135,7 +116,7 @@ describe('signing in again after a reload', () => {
 
     expect(await screen.findByText('Your session has ended. Sign in again.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument();
-    expect(window.sessionStorage.getItem('yulove.signedIn')).toBeNull();
+    expect(oidc.removeUser).toHaveBeenCalled();
   });
 });
 
@@ -165,22 +146,44 @@ describe('the real sign-in settings', () => {
     expect(settings.post_logout_redirect_uri).toBe(`${window.location.origin}/`);
   });
 
-  it('keeps tokens in memory only', async () => {
+  it('renews in the background, shortly before the access token expires, with the refresh token', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { sub: 'sub-1', iss: 'x', aud: CONFIG.clientId, iat: now };
+    const grants: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `${CONFIG.cognitoDomain}/oauth2/token`) {
+          grants.push(String(init?.body));
+          return jsonResponse({
+            id_token: jwt({ ...claims, exp: now + 3600 }),
+            access_token: 'renewed-access',
+            token_type: 'Bearer',
+            expires_in: 3600,
+          });
+        }
+        return jsonResponse({}, 404);
+      }),
+    );
     const manager = createUserManager(CONFIG);
+    expect(manager.settings.automaticSilentRenew).toBe(true);
+    // The access token is inside the 60 second "expiring" window, so renewal starts on its own.
+    await manager.storeUser(
+      fakeUser(undefined, {
+        idToken: jwt({ ...claims, exp: now + 30 }),
+        idTokenExpiresIn: 30,
+        accessTokenExpiresIn: 30,
+      }),
+    );
+    expect(await manager.getUser()).not.toBeNull(); // loading the user starts the expiry timers
 
-    await manager.storeUser(fakeUser());
+    await waitFor(() => expect(grants).toHaveLength(1), { timeout: 5000 });
 
-    expect((await manager.getUser())?.id_token).toBe('the-id-token');
-    expect(window.localStorage.length).toBe(0);
-    for (let i = 0; i < window.sessionStorage.length; i++) {
-      const value = window.sessionStorage.getItem(window.sessionStorage.key(i)!) ?? '';
-      expect(value).not.toContain('the-id-token');
-      expect(value).not.toContain('the-access-token');
-    }
-  });
-
-  it('renews quietly before the token expires', () => {
-    expect(createUserManager(CONFIG).settings.automaticSilentRenew).toBe(true);
+    const form = new URLSearchParams(grants[0]);
+    expect(form.get('grant_type')).toBe('refresh_token');
+    expect(form.get('refresh_token')).toBe('the-refresh-token');
+    await manager.removeUser();
+    manager.stopSilentRenew();
   });
 });
 

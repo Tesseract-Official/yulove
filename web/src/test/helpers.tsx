@@ -18,13 +18,43 @@ export const CONFIG: AppConfig = {
 export const ID_TOKEN = 'the-id-token';
 export const ACCESS_TOKEN = 'the-access-token';
 
-export function fakeUser(userState?: unknown): User {
+export const REFRESH_TOKEN = 'the-refresh-token';
+
+/** An unsigned JWT: oidc-client-ts reads the claims but does not check the signature. */
+export function jwt(claims: Record<string, unknown>): string {
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${part({ alg: 'none' })}.${part(claims)}.sig`;
+}
+
+export interface FakeUserOptions {
+  /** Passed back as `user.state` (where the page to return to is kept). */
+  userState?: unknown;
+  idToken?: string;
+  /** Seconds until the ID token expires (negative: already expired). Default one hour. */
+  idTokenExpiresIn?: number;
+  /** Seconds until the access token expires. Default one hour. */
+  accessTokenExpiresIn?: number;
+  /** Null for a user that has no refresh token. */
+  refreshToken?: string | null;
+}
+
+/** A signed-in user as oidc-client-ts holds it. */
+export function fakeUser(userState?: unknown, options: FakeUserOptions = {}): User {
+  const now = Math.floor(Date.now() / 1000);
+  const refreshToken = options.refreshToken === undefined ? REFRESH_TOKEN : options.refreshToken;
   return new User({
-    id_token: ID_TOKEN,
+    id_token: options.idToken ?? ID_TOKEN,
     access_token: ACCESS_TOKEN,
     token_type: 'Bearer',
-    profile: { sub: 'sub-1', iss: 'x', aud: 'x', exp: 0, iat: 0 },
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    ...(refreshToken === null ? {} : { refresh_token: refreshToken }),
+    profile: {
+      sub: 'sub-1',
+      iss: 'x',
+      aud: 'x',
+      iat: now,
+      exp: now + (options.idTokenExpiresIn ?? 3600),
+    },
+    expires_at: now + (options.accessTokenExpiresIn ?? 3600),
     userState,
   });
 }
@@ -109,16 +139,16 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>;
 }
 
-export interface RenderOptions {
+export interface RenderOptions<T extends OidcClient = FakeOidc> {
   route?: string;
-  oidc?: FakeOidc;
+  oidc?: T;
   strict?: boolean;
   navigateExternal?: (url: string) => void;
 }
 
 /** The whole app on a memory router, with a fake sign-in client. */
-export function renderApp(options: RenderOptions = {}) {
-  const oidc = options.oidc ?? new FakeOidc();
+export function renderApp<T extends OidcClient = FakeOidc>(options: RenderOptions<T> = {}) {
+  const oidc = (options.oidc ?? new FakeOidc()) as T;
   const navigateExternal = options.navigateExternal ?? vi.fn();
   const tree = (
     <AppProviders config={CONFIG} authClient={oidc} navigateExternal={navigateExternal}>

@@ -1,5 +1,4 @@
 import {
-  InMemoryWebStorage,
   UserManager,
   WebStorageStateStore,
   type User,
@@ -33,9 +32,13 @@ export function appUrls(origin: string): { redirectUri: string; logoutUri: strin
 /**
  * Authorization code + PKCE against the Cognito hosted UI, going straight to Google.
  *
- * Tokens live only in memory (a page reload signs in again, which Cognito's own session makes
- * quick). The sign-in state that has to survive the trip to Cognito, the PKCE verifier and state
- * id, goes in sessionStorage; it holds no token.
+ * The user (with its tokens) is kept in sessionStorage, so a reload restores the session in the
+ * same tab, while closing the tab ends it. localStorage is never used. Tokens are renewed with the
+ * Cognito refresh token (a refresh_token grant at the token endpoint), both when the app starts
+ * with tokens that expired or are about to and automatically shortly before the access token
+ * expires. Cognito's code flow always issues a refresh token and the app only renews users that
+ * have one, so the library's hidden-iframe fallback (which the hosted UI would refuse) is never
+ * used. The PKCE verifier and state of a sign-in in progress live in sessionStorage too.
  */
 export function createUserManager(
   config: AppConfig,
@@ -58,8 +61,9 @@ export function createUserManager(
     response_type: 'code',
     scope: 'openid email profile',
     extraQueryParams: { identity_provider: 'Google' },
-    userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
+    userStore: new WebStorageStateStore({ store: window.sessionStorage }),
     stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
+    // Renews shortly before the access token expires, with the refresh token.
     automaticSilentRenew: true,
     loadUserInfo: false,
   });

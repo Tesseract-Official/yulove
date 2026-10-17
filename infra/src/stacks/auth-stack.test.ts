@@ -33,6 +33,18 @@ describe('AuthStack', () => {
     });
   });
 
+  it('lets the web app renew tokens with a refresh token that lasts one day', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      // The refresh_token grant is the only auth flow switched on.
+      ExplicitAuthFlows: ['ALLOW_REFRESH_TOKEN_AUTH'],
+      RefreshTokenValidity: 1440,
+      IdTokenValidity: 60,
+      AccessTokenValidity: 60,
+      TokenValidityUnits: { RefreshToken: 'minutes', IdToken: 'minutes', AccessToken: 'minutes' },
+      EnableTokenRevocation: true,
+    });
+  });
+
   it('runs a Node.js 22 pre-sign-up Lambda configured for the college domain and Users table', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x',

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.js';
-import { useAutoSignIn } from '../auth/useAutoSignIn.js';
 import { errorMessage } from '../api/errors.js';
 import { ErrorState, Loading } from '../ui/states.js';
 import { MeContext } from './MeContext.js';
@@ -16,17 +15,10 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const location = useLocation();
   const returnTo = `${location.pathname}${location.search}`;
-  const signingIn = useAutoSignIn(returnTo);
   const me = useMe();
 
   if (status === 'loading') return <Loading />;
-  if (status === 'signedOut') {
-    return signingIn ? (
-      <Loading label="Signing you in…" />
-    ) : (
-      <Navigate to="/" replace state={{ from: returnTo }} />
-    );
-  }
+  if (status === 'signedOut') return <Navigate to="/" replace state={{ from: returnTo }} />;
 
   if (me.isPending) return <Loading label="Loading your account…" />;
   if (me.isError) {
