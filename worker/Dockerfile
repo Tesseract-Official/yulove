@@ -30,7 +30,7 @@ RUN apt-get update \
  && find /opt/judge -type d -exec chmod 755 {} + \
  && find /opt/judge -type f -exec chmod 644 {} +
 
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS base
 
 # g++ for C++17, util-linux for prlimit, tini to reap the zombies of killed programs (PID 1 must
 # do that, or a fork bomb would leave the runner user's process table full), and the shared
@@ -74,14 +74,24 @@ RUN mkdir /work && chmod 755 /work
 
 WORKDIR /app
 COPY package.json ./
-RUN npm install --no-audit --no-fund --no-package-lock && npm cache clean --force
+RUN npm install --omit=dev --no-audit --no-fund --no-package-lock && npm cache clean --force
 COPY src ./src
 COPY fixtures ./fixtures
-COPY cli.js vitest.config.js DRIVERS.md ./
+COPY cli.js DRIVERS.md ./
 RUN chmod -R a+rX /app
 
+# PID 1 is tini, which reaps the zombies of killed programs and passes signals on to the worker.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# --- test: the same image plus Vitest, for `pnpm test:worker-docker` ---------------------------
+FROM base AS test
+RUN npm install --no-audit --no-fund --no-package-lock && npm cache clean --force
+COPY vitest.config.js ./
 # The sandbox tests need root, the runner users and these tools, so they only run in this image.
 ENV WORKER_SANDBOX_TESTS=1
+CMD ["npx", "vitest", "run"]
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "cli.js"]
+# --- production: what runs on Fargate (this must stay the last stage) --------------------------
+FROM base AS production
+ENV NODE_ENV=production
+CMD ["node", "src/index.js"]

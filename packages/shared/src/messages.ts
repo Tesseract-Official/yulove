@@ -101,6 +101,8 @@ export const resultMsg = z.union([
     ...answerRef,
     outcome: z.literal('FAILED'),
     failReason: z.enum(FAIL_REASONS),
+    /** A short explanation for the logs (at most 300 characters). */
+    detail: z.string().max(300).optional(),
   }),
   z.object({
     type: z.literal('SETUP'),
@@ -123,6 +125,15 @@ export const resultMsg = z.union([
      */
     failedInputIndexes: z.array(z.number().int().nonnegative()),
     reason: z.string(),
+  }),
+  z.object({
+    type: z.literal('SETUP'),
+    questionId: nonEmpty,
+    version,
+    attempt,
+    /** Setup itself broke (storage, a crash), as opposed to the reference failing on some inputs. */
+    outcome: z.literal('FAILED'),
+    reason: z.string().max(500),
   }),
 ]);
 export type ResultMsg = z.infer<typeof resultMsg>;

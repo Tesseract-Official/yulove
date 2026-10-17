@@ -6,3 +6,6 @@ export function serviceEntry(relativePath: string): string {
 }
 
 export const REPO_LOCK_FILE = fileURLToPath(new URL('../../../pnpm-lock.yaml', import.meta.url));
+
+/** The worker's folder: its Dockerfile and sources are the container image. */
+export const WORKER_DIR = fileURLToPath(new URL('../../../worker', import.meta.url));

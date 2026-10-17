@@ -12,6 +12,7 @@ import {
   chmod,
   chown,
   copyFile,
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
@@ -299,3 +300,18 @@ export const sandbox = {
   copyFiles,
   runSandboxed,
 };
+
+/**
+ * Makes sure the work root exists, is owned by root and is mode 755 (so a runner can write only
+ * into the directory made for its own run), and removes run directories left by an earlier
+ * process. An ephemeral volume may start out with other permissions.
+ */
+export async function prepareWorkRoot() {
+  requireRoot();
+  await mkdir(WORK_ROOT, { recursive: true });
+  await chown(WORK_ROOT, 0, 0);
+  await chmod(WORK_ROOT, 0o755);
+  for (const name of await readdir(WORK_ROOT)) {
+    if (name.startsWith('run-')) await rm(join(WORK_ROOT, name), { recursive: true, force: true });
+  }
+}

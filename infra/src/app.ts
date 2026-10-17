@@ -6,6 +6,7 @@ import { AuthStack } from './stacks/auth-stack.js';
 import { DataStack } from './stacks/data-stack.js';
 import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
+import { WorkerStack } from './stacks/worker-stack.js';
 
 const app = new App();
 const { collegeDomain, webOrigins, geminiModel } = readConfig(app.node);
@@ -21,6 +22,13 @@ const auth = new AuthStack(app, 'DsaJudgeAuth', {
 });
 
 const queues = new QueueStack(app, 'DsaJudgeQueues', { env });
+
+new WorkerStack(app, 'DsaJudgeWorker', {
+  env,
+  executeQueue: queues.queues.execute,
+  resultsQueue: queues.queues.results,
+  bucket: data.bucket,
+});
 
 const pipeline = new PipelineStack(app, 'DsaJudgePipeline', {
   env,

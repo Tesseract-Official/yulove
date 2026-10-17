@@ -7,6 +7,7 @@ import { AuthStack } from './stacks/auth-stack.js';
 import { DataStack } from './stacks/data-stack.js';
 import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
+import { WorkerStack } from './stacks/worker-stack.js';
 
 export const TEST_CONTEXT = {
   collegeDomain: 'college.edu',
@@ -17,7 +18,7 @@ export const TEST_CONTEXT = {
 /** Builds all four stacks the way app.ts does, without running esbuild. */
 export function buildApp(
   context: Record<string, string> = TEST_CONTEXT,
-  options: { routes?: boolean } = {},
+  options: { routes?: boolean; worker?: boolean } = {},
 ) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
   const { collegeDomain, webOrigins, geminiModel } = readConfig(app.node);
@@ -52,12 +53,23 @@ export function buildApp(
 
   if (options.routes) registerRoutes(api, { collegeDomain });
 
+  // Synthesising the worker stages its Docker build context, so tests ask for it explicitly.
+  const worker = options.worker
+    ? new WorkerStack(app, 'Worker', {
+        env,
+        executeQueue: queues.queues.execute,
+        resultsQueue: queues.queues.results,
+        bucket: data.bucket,
+      })
+    : undefined;
+
   return {
     app,
     data,
     auth,
     queues,
     pipeline,
+    worker,
     api,
     // Lazy: synthesising freezes a stack, so routes must be added before the first access.
     templates: {

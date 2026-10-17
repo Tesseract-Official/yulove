@@ -1,12 +1,13 @@
 // These tests start real processes as the runner users, so they need root, the runner users and the
 // toolchains: they only run inside the worker image (it sets WORKER_SANDBOX_TESTS=1).
-import { readFile, stat } from 'node:fs/promises';
+import { chmod, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { COMPILE_LIMITS, RUN_LIMITS } from './languages.js';
 import {
   createRunDir,
   killSlotProcesses,
+  prepareWorkRoot,
   processesOfUid,
   removeRunDir,
   runSandboxed,
@@ -83,6 +84,28 @@ sandboxDescribe('sandbox: who the program runs as', () => {
     const dir = await createRunDir(1);
     await removeRunDir(dir);
     await expect(stat(dir)).rejects.toThrow();
+  });
+});
+
+sandboxDescribe('sandbox: the work root', () => {
+  it('is made root-owned and mode 755, and stale run directories are removed', async () => {
+    const stale = await createRunDir(5, { 'old.txt': 'left over' });
+    await chmod(WORK_ROOT, 0o777); // as if the volume started with loose permissions
+
+    await prepareWorkRoot();
+
+    const info = await stat(WORK_ROOT);
+    expect(info.uid).toBe(0);
+    expect(info.mode & 0o777).toBe(0o755);
+    await expect(stat(stale)).rejects.toThrow();
+  });
+
+  it('keeps a runner out of the work root itself', async () => {
+    await prepareWorkRoot();
+    const { result } = await python(
+      'try:\n    open("/work/not-mine", "w")\n    print("wrote")\nexcept OSError:\n    print("denied")',
+    );
+    expect(result.stdout.trim()).toBe('denied');
   });
 });
 
