@@ -3,9 +3,11 @@ import {
   mapLimit,
   type AnswerItem,
   type AnswerStatus,
+  type BoardStudentRow,
+  type CellStatus,
   type ExamItem,
   type ExamQuestionRef,
-  type FailReason,
+  type QuestionCell,
   type UserItem,
 } from '@yulove/shared';
 import { answersDb, examStudentsDb, totalFor, usersDb } from '@yulove/shared/server';
@@ -45,21 +47,6 @@ export async function loadExamStudents(exam: ExamItem): Promise<ExamStudentView[
   }));
 }
 
-/** What is shown for a question that has no answer yet. */
-export type CellStatus = AnswerStatus | 'NOT_SUBMITTED';
-
-export interface QuestionCell {
-  number: number;
-  marks: number;
-  status: CellStatus;
-  /** FAILED_TO_GRADE: why. */
-  failReason?: FailReason;
-  failDetail?: string;
-  /** What counts: the override if there is one, otherwise the formula score; 0 when absent. */
-  score: number;
-  overridden: boolean;
-}
-
 export function questionCell(
   ref: Pick<ExamQuestionRef, 'number' | 'marks'>,
   answer: AnswerItem | undefined,
@@ -68,7 +55,7 @@ export function questionCell(
   return {
     number: ref.number,
     marks: ref.marks,
-    status: answer?.status ?? 'NOT_SUBMITTED',
+    status: (answer?.status ?? 'NOT_SUBMITTED') satisfies CellStatus,
     ...(answer?.failReason ? { failReason: answer.failReason } : {}),
     ...(answer?.failDetail ? { failDetail: answer.failDetail } : {}),
     score: computeQuestionScore(ref.marks, answer, absent),
@@ -77,7 +64,7 @@ export function questionCell(
 }
 
 /** One student's row: a cell per question and the total. */
-export function studentRow(exam: ExamItem, student: ExamStudentView) {
+export function studentRow(exam: ExamItem, student: ExamStudentView): BoardStudentRow {
   const byNumber = new Map(student.answers.map((a) => [a.questionNumber, a]));
   const total = totalFor(exam, student.answers, student.absent);
   return {

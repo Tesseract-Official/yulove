@@ -36,7 +36,10 @@ describe('routing by role', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument();
     expect(location()).toHaveTextContent(path);
-    expect(screen.getByText('Batch Alpha')).toBeInTheDocument();
+    // The teacher and student homes are still placeholders that list the user's batches.
+    if (role === 'TEACHER' || role === 'STUDENT') {
+      expect(screen.getByText('Batch Alpha')).toBeInTheDocument();
+    }
   });
 
   it('asks GET /me with the ID token, not the access token', async () => {

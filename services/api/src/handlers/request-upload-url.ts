@@ -5,6 +5,7 @@ import {
   ANSWER_IMAGE_TYPE,
   BUCKET_ENV,
   requestUploadUrlBody,
+  type UploadUrlResponse,
   UPLOAD_URL_SECONDS,
 } from '@yulove/shared';
 import { requireUser } from '@yulove/shared/server';
@@ -31,16 +32,14 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     Fields: { 'Content-Type': ANSWER_IMAGE_TYPE },
   });
 
-  return {
-    status: 200,
-    body: {
-      url,
-      fields,
-      key: target.imageKey,
-      maxBytes: ANSWER_IMAGE_MAX_BYTES,
-      expiresInSeconds: UPLOAD_URL_SECONDS,
-    },
+  const body: UploadUrlResponse = {
+    url,
+    fields,
+    key: target.imageKey,
+    maxBytes: ANSWER_IMAGE_MAX_BYTES,
+    expiresInSeconds: UPLOAD_URL_SECONDS,
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

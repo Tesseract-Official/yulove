@@ -30,21 +30,6 @@ function PlaceholderHome({ title, intro }: { title: string; intro: string }) {
   );
 }
 
-export function AdminHome() {
-  return (
-    <PlaceholderHome title="Admin" intro="Staff, batches and score overrides will live here." />
-  );
-}
-
-export function ManagerHome() {
-  return (
-    <PlaceholderHome
-      title="Batch manager"
-      intro="Student lists, answer photos, the status board and publishing will live here."
-    />
-  );
-}
-
 export function TeacherHome() {
   return (
     <PlaceholderHome

@@ -5,6 +5,9 @@ import {
   ConflictError,
   normaliseEmail,
   normaliseRollNo,
+  type ImportedRow,
+  type ImportStudentsResponse,
+  type RejectedRow,
   type UserItem,
   mapLimit,
 } from '@yulove/shared';
@@ -14,21 +17,6 @@ import { FIELD_LABEL, parseStudentCsv, type StudentCsvRow } from '../lib/csv.js'
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 const CONCURRENCY = 25;
-
-export interface ImportedRow {
-  line: number;
-  email: string;
-  name: string;
-  rollNo: string;
-  batchId: string;
-}
-
-export interface RejectedRow {
-  line: number;
-  email?: string;
-  rollNo?: string;
-  reason: string;
-}
 
 /** A row that passed the field checks, with its normalised identity (lower-case email, upper-case roll number). */
 interface Candidate extends StudentCsvRow {
@@ -168,20 +156,18 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   updated.sort(byLine);
   rejected.sort(byLine);
 
-  return {
-    status: 200,
-    body: {
-      created,
-      updated,
-      rejected,
-      counts: {
-        rows: rows.length,
-        created: created.length,
-        updated: updated.length,
-        rejected: rejected.length,
-      },
+  const response: ImportStudentsResponse = {
+    created,
+    updated,
+    rejected,
+    counts: {
+      rows: rows.length,
+      created: created.length,
+      updated: updated.length,
+      rejected: rejected.length,
     },
   };
+  return { status: 200, body: response };
 }
 
 /** Decides whether a row creates a student, updates one, or must be rejected (a reason). */

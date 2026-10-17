@@ -334,7 +334,527 @@ p {
   cursor: pointer;
 }
 
+/* Forms */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  margin: 0 0 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field label,
+fieldset legend {
+  font-weight: 600;
+}
+
+.field.inline {
+  flex: 1 1 14rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+input[type='text'],
+input[type='email'],
+input[type='search'],
+input:not([type]),
+select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+input[type='file'] {
+  width: 100%;
+  min-height: var(--tap);
+  font: inherit;
+}
+
+input[type='range'] {
+  width: 100%;
+  min-height: var(--tap);
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: var(--tap);
+}
+
+.check input {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions .button {
+  flex: 1 1 10rem;
+}
+
+.button-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+
+.help {
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.help p {
+  margin: 0 0 0.375rem;
+}
+
+code {
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  padding: 0.0625rem 0.25rem;
+  border-radius: 4px;
+}
+
+.break {
+  overflow-wrap: anywhere;
+}
+
+/* Page pieces */
+
+.page-header {
+  margin-bottom: 1rem;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.menu-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.menu-card-title {
+  font-weight: 700;
+  font-size: 1.0625rem;
+}
+
+.cards {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.card-item {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.card-item p {
+  margin: 0 0 0.5rem;
+}
+
+.rows {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+
+.row-title {
+  font-weight: 600;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.chip-good {
+  background: #e6f4ea;
+  border-color: #137333;
+  color: #0b5226;
+}
+
+.chip-bad {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.chip-progress {
+  background: #e8f0fe;
+  border-color: var(--accent);
+  color: #1a47a8;
+}
+
+.notice-error,
+.notice-success,
+.notice-warning,
+.notice-info {
+  margin: 0 0 0.75rem;
+}
+
+.notice-error {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.notice-success {
+  background: #e6f4ea;
+  border-color: #137333;
+  color: #0b5226;
+}
+
+.notice-warning {
+  background: #fef7e0;
+  border-color: #b06000;
+  color: #7a4300;
+}
+
+.score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.confirm {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #b06000;
+  border-radius: var(--radius);
+  background: #fef7e0;
+}
+
+.confirm p {
+  margin: 0 0 0.5rem;
+}
+
+details {
+  margin: 0 0 0.75rem;
+}
+
+summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Upload */
+
+.student {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.student-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.student-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.student-header h2 {
+  margin-top: 0;
+}
+
+.question-grid {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.question-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.question-button.is-selected {
+  border-color: var(--accent);
+}
+
+.upload-step {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.capture {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+}
+
+.file-button:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cropper {
+  position: relative;
+  height: min(70vh, 30rem);
+  background: #111;
+  border-radius: var(--radius);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.cropper-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tools {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tools .button {
+  flex: 1;
+}
+
+.shapes {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1rem;
+}
+
+/* Board and answers */
+
+.counts {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.cells {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cell {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cell-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cell-detail {
+  margin-top: 0.5rem;
+}
+
+.cell-detail p {
+  margin: 0 0 0.375rem;
+}
+
+.cell-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent);
+}
+
+.answer-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.answer-photo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.code {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 0.875rem;
+}
+
+.publish {
+  margin: 0.5rem 0;
+}
+
 @media (min-width: 640px) {
+  .menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .question-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .capture {
+    flex-direction: row;
+  }
+
+  .capture .file-button {
+    flex: 1;
+  }
+
   .facts {
     grid-template-columns: max-content 1fr;
   }

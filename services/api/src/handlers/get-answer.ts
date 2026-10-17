@@ -4,6 +4,7 @@ import {
   ANSWER_IMAGE_TYPE,
   BUCKET_ENV,
   computeQuestionScore,
+  type AnswerDetailResponse,
   normaliseEmail,
   NotFoundError,
   ValidationError,
@@ -55,33 +56,31 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       )
     : undefined;
 
-  return {
-    status: 200,
-    body: {
-      examId: exam.examId,
-      studentEmail: email,
-      questionNumber: number,
-      marks: ref.marks,
-      absent,
-      status: answer.status,
-      attempt: answer.attempt,
-      failReason: answer.failReason,
-      failDetail: answer.failDetail,
-      imageUrl,
-      imageExpiresInSeconds: imageUrl ? IMAGE_LINK_SECONDS : undefined,
-      language: answer.language,
-      rawTranscription: answer.rawTranscription,
-      correctedCode: answer.correctedCode,
-      fixes: answer.fixes ?? [],
-      estimatedComplexity: answer.estimatedComplexity,
-      meetsComplexity: answer.meetsComplexity,
-      testsPassed: answer.testsPassed,
-      testsTotal: answer.testsTotal,
-      verdicts: answer.verdicts ?? [],
-      score: computeQuestionScore(ref.marks, answer, absent),
-      override: answer.override,
-    },
+  const body: AnswerDetailResponse = {
+    examId: exam.examId,
+    studentEmail: email,
+    questionNumber: number,
+    marks: ref.marks,
+    absent,
+    status: answer.status,
+    attempt: answer.attempt,
+    failReason: answer.failReason,
+    failDetail: answer.failDetail,
+    imageUrl,
+    imageExpiresInSeconds: imageUrl ? IMAGE_LINK_SECONDS : undefined,
+    language: answer.language,
+    rawTranscription: answer.rawTranscription,
+    correctedCode: answer.correctedCode,
+    fixes: answer.fixes ?? [],
+    estimatedComplexity: answer.estimatedComplexity,
+    meetsComplexity: answer.meetsComplexity,
+    testsPassed: answer.testsPassed,
+    testsTotal: answer.testsTotal,
+    verdicts: answer.verdicts ?? [],
+    score: computeQuestionScore(ref.marks, answer, absent),
+    override: answer.override,
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

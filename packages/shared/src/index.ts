@@ -2,6 +2,7 @@
 export const PROJECT_NAME = 'paper-dsa-exam-judge';
 
 export * from './answer-files.js';
+export * from './api-types.js';
 export * from './enums.js';
 export * from './errors.js';
 export * from './concurrency.js';

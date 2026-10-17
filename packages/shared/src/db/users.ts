@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from '../errors.js';
 import { normaliseEmail, normaliseRollNo } from '../identity.js';
 import type { UserItem } from '../types.js';
@@ -90,4 +90,28 @@ export async function getUserByRoll(rollNo: string): Promise<UserItem | undefine
     ExpressionAttributeValues: { ':rollNo': normaliseRollNo(rollNo) },
   });
   return first;
+}
+
+/**
+ * Every teacher and batch manager. The Users table has no index by role, so this scans it with a
+ * filter; the table is small (one college), and the filter keeps students out of the response.
+ */
+export async function listStaff(): Promise<UserItem[]> {
+  const items: UserItem[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await docClient().send(
+      new ScanCommand({
+        TableName: table(),
+        FilterExpression: '#role IN (:teacher, :manager)',
+        ExpressionAttributeNames: { '#role': 'role' },
+        ExpressionAttributeValues: { ':teacher': 'TEACHER', ':manager': 'BATCH_MANAGER' },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    items.push(...((page.Items ?? []) as UserItem[]));
+    startKey = page.LastEvaluatedKey;
+  } while (startKey);
+  // A filter is the database's job, but never let a student through if a test double ignores it.
+  return items.filter((u) => u.role === 'TEACHER' || u.role === 'BATCH_MANAGER');
 }

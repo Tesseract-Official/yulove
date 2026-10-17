@@ -1,4 +1,11 @@
-import { ConflictError, HttpError, mapLimit, parseBody, publishBody } from '@yulove/shared';
+import {
+  ConflictError,
+  HttpError,
+  mapLimit,
+  parseBody,
+  publishBody,
+  type PublishResponse,
+} from '@yulove/shared';
 import { examStudentsDb, examsDb, requireUser, totalFor } from '@yulove/shared/server';
 import { IN_PROGRESS, loadExamStudents } from '../lib/board.js';
 import { loadExamInBatch } from '../lib/exams.js';
@@ -16,16 +23,14 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const body = event.body ? parseBody(publishBody, event) : {};
 
   if (exam.status === 'PUBLISHED') {
-    return {
-      status: 200,
-      body: {
-        examId: exam.examId,
-        status: 'PUBLISHED',
-        alreadyPublished: true,
-        publishedBy: exam.publishedBy,
-        publishedAt: exam.publishedAt,
-      },
+    const already: PublishResponse = {
+      examId: exam.examId,
+      status: 'PUBLISHED',
+      alreadyPublished: true,
+      publishedBy: exam.publishedBy,
+      publishedAt: exam.publishedAt,
     };
+    return { status: 200, body: already };
   }
   if (exam.status !== 'READY') {
     throw new ConflictError('Only an exam that is READY can be published');
@@ -59,16 +64,14 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     publishedAt,
   });
 
-  return {
-    status: 200,
-    body: {
-      examId: exam.examId,
-      status: 'PUBLISHED',
-      publishedBy: ctx.user.email,
-      publishedAt,
-      inProgress,
-    },
+  const published: PublishResponse = {
+    examId: exam.examId,
+    status: 'PUBLISHED',
+    publishedBy: ctx.user.email,
+    publishedAt,
+    inProgress,
   };
+  return { status: 200, body: published };
 }
 
 export const handler = apiHandler(handle);

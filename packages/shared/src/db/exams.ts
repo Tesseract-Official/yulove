@@ -82,11 +82,8 @@ export function listExamsByBatch(batchId: string): Promise<ExamItem[]> {
   });
 }
 
-/** Exams whose question list includes this exact question version. */
-export async function listExamsUsingQuestion(
-  questionId: string,
-  version: number,
-): Promise<ExamItem[]> {
+/** Every exam. The table is small (one exam per batch per week), so a scan is fine. */
+export async function listAllExams(): Promise<ExamItem[]> {
   const items: ExamItem[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -96,7 +93,15 @@ export async function listExamsUsingQuestion(
     items.push(...((page.Items ?? []) as ExamItem[]));
     startKey = page.LastEvaluatedKey;
   } while (startKey);
-  return items.filter((exam) =>
+  return items;
+}
+
+/** Exams whose question list includes this exact question version. */
+export async function listExamsUsingQuestion(
+  questionId: string,
+  version: number,
+): Promise<ExamItem[]> {
+  return (await listAllExams()).filter((exam) =>
     exam.questions.some((q) => q.questionId === questionId && q.version === version),
   );
 }

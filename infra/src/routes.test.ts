@@ -21,6 +21,9 @@ interface Expected {
 // Written by hand: what each route's Lambda may do. Every route reads Users (requireUser).
 const EXPECTED: Expected[] = [
   { routeKey: 'GET /me', tables: { Users: 'read', Batches: 'read' } },
+  { routeKey: 'GET /batches', tables: { Users: 'read', Batches: 'read' } },
+  { routeKey: 'GET /staff', tables: { Users: 'read' } },
+  { routeKey: 'GET /exams', tables: { Users: 'read', Exams: 'read' } },
   { routeKey: 'POST /staff', tables: { Users: 'readWrite', Batches: 'read' }, collegeDomain: true },
   { routeKey: 'PUT /staff/{email}/batches', tables: { Users: 'readWrite', Batches: 'read' } },
   { routeKey: 'POST /batches', tables: { Users: 'read', Batches: 'write' } },

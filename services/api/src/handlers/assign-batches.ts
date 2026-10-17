@@ -1,5 +1,6 @@
 import {
   assignBatchesBody,
+  type AssignBatchesResponse,
   normaliseEmail,
   NotFoundError,
   parseBody,
@@ -26,7 +27,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
 
   const updated = await usersDb.updateUser(email, { batchIds });
   if (!updated) throw new NotFoundError(`No user ${email}`);
-  return { status: 200, body: { user: { ...target, batchIds } } };
+  const response: AssignBatchesResponse = { user: { ...target, batchIds } };
+  return { status: 200, body: response };
 }
 
 export const handler = apiHandler(handle);

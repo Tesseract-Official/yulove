@@ -20,6 +20,8 @@ export const createStaffBody = z.object({
   batchIds: z.array(batchId).default([]),
 });
 export type CreateStaffBody = z.infer<typeof createStaffBody>;
+/** What a client sends: `batchIds` may be left out. */
+export type CreateStaffInput = z.input<typeof createStaffBody>;
 
 /** PUT /staff/{email}/batches (batch managers and teachers) */
 export const assignBatchesBody = z.object({

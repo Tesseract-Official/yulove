@@ -1,4 +1,10 @@
-import { normaliseEmail, NotFoundError, parseBody, setAbsentBody } from '@yulove/shared';
+import {
+  normaliseEmail,
+  NotFoundError,
+  parseBody,
+  setAbsentBody,
+  type SetAbsentResponse,
+} from '@yulove/shared';
 import { examStudentsDb, recomputeExamTotal, requireUser, usersDb } from '@yulove/shared/server';
 import { loadExamInBatch } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
@@ -22,10 +28,13 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   await examStudentsDb.setAbsent(exam.examId, email, body.absent);
   const total = await recomputeExamTotal(exam, email);
 
-  return {
-    status: 200,
-    body: { examId: exam.examId, studentEmail: email, absent: body.absent, ...total },
+  const response: SetAbsentResponse = {
+    examId: exam.examId,
+    studentEmail: email,
+    absent: body.absent,
+    ...total,
   };
+  return { status: 200, body: response };
 }
 
 export const handler = apiHandler(handle);

@@ -1,4 +1,10 @@
-import { createStaffBody, parseBody, ValidationError, type UserItem } from '@yulove/shared';
+import {
+  createStaffBody,
+  parseBody,
+  ValidationError,
+  type CreateStaffResponse,
+  type UserItem,
+} from '@yulove/shared';
 import { requireUser, usersDb } from '@yulove/shared/server';
 import { assertBatchesExist } from '../lib/batches.js';
 import { collegeEmailProblem, requireCollegeDomain } from '../lib/college-email.js';
@@ -23,7 +29,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     active: true,
   };
   await usersDb.createUser(user); // 409 if the email already exists
-  return { status: 201, body: { user } };
+  const response: CreateStaffResponse = { user };
+  return { status: 201, body: response };
 }
 
 export const handler = apiHandler(handle);
