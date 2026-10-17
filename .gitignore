@@ -16,3 +16,6 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Local web runtime config (pnpm web:env)
+web/public/config.json

@@ -212,6 +212,25 @@ export interface AuditLogItem {
   outcome?: RequestOutcome;
 }
 
+/** GET /me: the caller, their role and their batches. */
+export interface MeResponse {
+  email: string;
+  name: string;
+  role: Role;
+  /** Students only. */
+  rollNo?: string | undefined;
+  /** Students only. */
+  batchId?: string | undefined;
+  /** Batch managers and teachers. */
+  batchIds?: string[] | undefined;
+  batches: BatchItem[];
+}
+
+/** The JSON body of every error response from the API. */
+export interface ApiErrorBody {
+  error: { code: string; message: string; details?: unknown };
+}
+
 export function examStudentKey(examId: string, studentEmail: string): string {
   return `${examId}#${normaliseEmail(studentEmail)}`;
 }

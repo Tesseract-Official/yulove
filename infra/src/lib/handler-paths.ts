@@ -9,3 +9,6 @@ export const REPO_LOCK_FILE = fileURLToPath(new URL('../../../pnpm-lock.yaml', i
 
 /** The worker's folder: its Dockerfile and sources are the container image. */
 export const WORKER_DIR = fileURLToPath(new URL('../../../worker', import.meta.url));
+
+/** The web app's build output, uploaded by WebDeploy. */
+export const WEB_DIST_DIR = fileURLToPath(new URL('../../../web/dist', import.meta.url));

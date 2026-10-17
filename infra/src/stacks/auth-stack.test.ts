@@ -28,8 +28,15 @@ describe('AuthStack', () => {
       AllowedOAuthFlows: ['code'],
       AllowedOAuthFlowsUserPoolClient: true,
       SupportedIdentityProviders: ['Google'],
-      CallbackURLs: ['https://app.college.edu/auth/callback'],
-      LogoutURLs: ['https://app.college.edu/'],
+      // The configured origin plus the CloudFront site, whose URL is only known at deploy time.
+      CallbackURLs: [
+        'https://app.college.edu/auth/callback',
+        { 'Fn::Join': ['', ['https://', Match.anyValue(), '/auth/callback']] },
+      ],
+      LogoutURLs: [
+        'https://app.college.edu/',
+        { 'Fn::Join': ['', ['https://', Match.anyValue(), '/']] },
+      ],
     });
   });
 

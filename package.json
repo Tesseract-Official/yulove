@@ -18,13 +18,15 @@
     "smoke:worker": "pnpm --filter @yulove/scripts smoke:worker",
     "try:transcribe": "pnpm --filter @yulove/scripts try:transcribe",
     "seed:dev-questions": "pnpm --filter @yulove/scripts seed:dev-questions",
-    "e2e:pipeline": "pnpm --filter @yulove/scripts e2e:pipeline"
+    "e2e:pipeline": "pnpm --filter @yulove/scripts e2e:pipeline",
+    "web:env": "pnpm --filter @yulove/scripts web:env"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",

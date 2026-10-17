@@ -1,4 +1,4 @@
-import { ROLES, type BatchItem, mapLimit } from '@yulove/shared';
+import { ROLES, type BatchItem, type MeResponse, mapLimit } from '@yulove/shared';
 import { batchesDb, requireUser } from '@yulove/shared/server';
 import { apiHandler, type ApiEvent, type ApiResult } from '../lib/http.js';
 
@@ -19,18 +19,16 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     batches = found.filter((b): b is BatchItem => b !== undefined);
   }
 
-  return {
-    status: 200,
-    body: {
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      rollNo: user.rollNo,
-      batchId: user.batchId,
-      batchIds: user.batchIds,
-      batches,
-    },
+  const body: MeResponse = {
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    rollNo: user.rollNo,
+    batchId: user.batchId,
+    batchIds: user.batchIds,
+    batches,
   };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

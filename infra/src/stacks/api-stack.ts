@@ -1,4 +1,4 @@
-import { Duration, Stack, type StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, Stack, type StackProps } from 'aws-cdk-lib';
 import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
@@ -101,6 +101,8 @@ export class ApiStack extends Stack {
         maxAge: Duration.hours(1),
       },
     });
+
+    new CfnOutput(this, 'ApiUrl', { value: this.httpApi.apiEndpoint });
   }
 
   /**
