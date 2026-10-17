@@ -8,9 +8,11 @@ const complete = {
   geminiTestgenModel: 'gemini-testgen',
   geminiTranscribeModel: 'gemini-transcribe',
   budgetEmail: 'alerts@college.edu',
+  superAdminEmails: ['founder@gmail.com'],
 };
 
-const nodeWith = (context: Record<string, string | undefined>) => new App({ context }).node;
+type Context = Record<string, string | string[] | undefined>;
+const nodeWith = (context: Context) => new App({ context }).node;
 const without = (key: keyof typeof complete) => ({ ...complete, [key]: undefined });
 
 describe('readConfig', () => {
@@ -22,6 +24,7 @@ describe('readConfig', () => {
         geminiTestgenModel: ' gemini-x ',
         geminiTranscribeModel: ' gemini-y ',
         budgetEmail: ' alerts@college.edu ',
+        superAdminEmails: ['Founder@Gmail.com'],
       }),
     );
     expect(config).toEqual({
@@ -30,6 +33,7 @@ describe('readConfig', () => {
       geminiTestgenModel: 'gemini-x',
       geminiTranscribeModel: 'gemini-y',
       budgetEmail: 'alerts@college.edu',
+      superAdminEmails: ['founder@gmail.com'],
     });
   });
 
@@ -74,5 +78,32 @@ describe('readConfig', () => {
         /budgetEmail/,
       );
     });
+  });
+
+  describe('superAdminEmails', () => {
+    const read = (superAdminEmails: string | string[] | undefined) =>
+      readConfig(nodeWith({ ...complete, superAdminEmails })).superAdminEmails;
+
+    it('reads a list, trimming, lower-casing and removing duplicates', () => {
+      expect(read([' A@Gmail.com', 'b@gmail.com', 'a@gmail.com'])).toEqual([
+        'a@gmail.com',
+        'b@gmail.com',
+      ]);
+    });
+
+    it('reads a comma-separated string, as passed with -c on the command line', () => {
+      expect(read('a@gmail.com, B@gmail.com,')).toEqual(['a@gmail.com', 'b@gmail.com']);
+    });
+
+    it.each([undefined, [], '', [' ']])('throws when the list is %j', (value) => {
+      expect(() => read(value)).toThrow(/superAdminEmails/);
+    });
+
+    it.each([['not an email'], ['a@b'], ['ok@gmail.com', 'two@@gmail.com']])(
+      'rejects %j',
+      (...values) => {
+        expect(() => read(values)).toThrow(/superAdminEmails must contain email addresses/);
+      },
+    );
   });
 });

@@ -31,6 +31,28 @@ export function canUserAccessBatch(user: UserItem, batchId: string): boolean {
   }
 }
 
+/** Users already loaded for a request, so the API wrapper does not read the same row again. */
+const loadedUsers = new WeakMap<object, UserItem>();
+
+/**
+ * The caller of this request. Reuses the user `requireUser` loaded; otherwise reads the Users
+ * table with the JWT's email claim. Undefined when there is no usable claim or no such user.
+ * Does not check the role or whether the account is active.
+ */
+export async function findCaller(event: AuthEvent): Promise<UserItem | undefined> {
+  const cached = loadedUsers.get(event);
+  if (cached) return cached;
+  let email: string;
+  try {
+    email = emailClaim(event);
+  } catch {
+    return undefined;
+  }
+  const user = await getUser(email);
+  if (user) loadedUsers.set(event, user);
+  return user;
+}
+
 function emailClaim(event: AuthEvent): string {
   const claim = event.requestContext.authorizer?.jwt?.claims?.['email'];
   if (typeof claim !== 'string' || claim.trim() === '') {
@@ -55,6 +77,7 @@ export async function requireUser(
 
   const user = await getUser(email);
   if (!user) throw new ForbiddenError('This account is not registered');
+  loadedUsers.set(event, user);
   if (user.active === false) throw new ForbiddenError('This account is deactivated');
 
   if (user.role !== 'SUPER_ADMIN' && !allowedRoles.includes(user.role)) {

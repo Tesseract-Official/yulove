@@ -406,3 +406,66 @@ describe('POST /batches/{batchId}/students/import: invalid input', () => {
     expect(body.counts).toEqual({ rows: 1, created: 0, updated: 0, rejected: 1 });
   });
 });
+
+describe('POST /batches/{batchId}/students/import: super admins are never students', () => {
+  const FOUNDERS = ['meloovegupta@gmail.com', 'ramoliyayug55@gmail.com'];
+
+  beforeEach(() => {
+    for (const email of FOUNDERS) {
+      db.addUser(userOf('SUPER_ADMIN', { email, name: 'Founder' }));
+    }
+  });
+
+  it('rejects a founder address as not a college email, and leaves the account alone', async () => {
+    const csv = [
+      HEADER,
+      `Founder One,${FOUNDERS[0]},R1,A`,
+      `Founder Two,${FOUNDERS[1]?.toUpperCase()},R2,A`,
+    ].join('\n');
+
+    const { status, body } = await call(MANAGER, 'A', csv);
+
+    expect(status).toBe(200);
+    expect(body.created).toEqual([]);
+    expect(body.updated).toEqual([]);
+    expect(body.rejected.map((r: { reason: string }) => r.reason)).toEqual([
+      'email must end in @college.edu',
+      'email must end in @college.edu',
+    ]);
+    for (const email of FOUNDERS) {
+      expect(db.users.get(email)).toMatchObject({ role: 'SUPER_ADMIN', name: 'Founder' });
+      expect(db.users.get(email)).not.toHaveProperty('rollNo');
+      expect(db.users.get(email)).not.toHaveProperty('batchId');
+    }
+    expect([...db.users.values()].some((u) => u.rollNo === 'R1' || u.rollNo === 'R2')).toBe(false);
+  });
+
+  it('does not let a super admin account on a college address be turned into a student', async () => {
+    db.addUser(userOf('SUPER_ADMIN', { email: 'founder@college.edu', name: 'Founder' }));
+
+    const { body } = await call(MANAGER, 'A', `${HEADER}\nFounder,founder@college.edu,R9,A`);
+
+    expect(body.created).toEqual([]);
+    expect(body.updated).toEqual([]);
+    expect(body.rejected).toEqual([
+      {
+        line: 2,
+        email: 'founder@college.edu',
+        rollNo: 'R9',
+        reason: 'founder@college.edu is a super admin account, not a student',
+      },
+    ]);
+    expect(db.users.get('founder@college.edu')).toMatchObject({ role: 'SUPER_ADMIN' });
+    expect(db.users.get('founder@college.edu')).not.toHaveProperty('rollNo');
+  });
+
+  it('cannot be bypassed by a super admin uploading the file', async () => {
+    const { body } = await call(
+      'super-admin@college.edu',
+      'A',
+      `${HEADER}\nFounder,${FOUNDERS[0]},R1,A`,
+    );
+
+    expect(body.counts).toMatchObject({ created: 0, updated: 0, rejected: 1 });
+  });
+});

@@ -2,6 +2,7 @@
 export * from './audit.js';
 export * from './auth.js';
 export * from './question-usage.js';
+export * from './request-audit.js';
 export * as answersDb from './db/answers.js';
 export * as appealsDb from './db/appeals.js';
 export * as auditLogDb from './db/audit-log.js';

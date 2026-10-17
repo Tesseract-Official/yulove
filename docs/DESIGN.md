@@ -27,7 +27,7 @@ Four roles, each checked on every API call; a user's role comes from the `Users`
 
 | Role | Created by | Can do |
 | --- | --- | --- |
-| Super admin (founders) | Seeded at deploy | Everything below; create teacher and batch-manager accounts; assign batch managers to batches; override any score (every override written to the audit log) |
+| Super admin (founders) | Seeded at deploy | Everything below; create teacher and batch-manager accounts; assign batch managers to batches; override any score (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log |
 | Teacher | Super admin | Assigned to batches by a super admin; create and edit questions; review and approve generated test cases; create one exam per batch with per-question marks; generate the exam PDF; see each student's scores by name; review appeals and re-run grading |
 | Batch manager | Super admin | Assigned to one or more batches; upload the student CSV; upload one cropped photo per student per question; mark a student absent; publish results; review appeals and re-run grading |
 | Student | Batch manager (CSV) | After publish: see own marks per question and which test cases failed; raise an appeal on a question |
@@ -61,7 +61,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 | Component | Choice | Notes |
 | --- | --- | --- |
 | Frontend | React single-page app on S3 + CloudFront | Separate screens per role; crop and compress before upload |
-| Sign-in | Cognito user pool, Google identity provider | Pre-sign-up check on college domain and `Users` table |
+| Sign-in | Cognito user pool, Google identity provider | Pre-sign-up check on college domain (or a founder address from the `superAdminEmails` setting) and `Users` table |
 | API | API Gateway HTTP API + Lambda, TypeScript on Node.js 22 | Types shared with the React app |
 | Queues | SQS FIFO × 3: transcribe, execute, results | Content-based IDs off; dedup ID includes attempt |
 | AI | Gemini API from Lambda, structured JSON output | API key in Secrets Manager; temperature 0 |
@@ -160,7 +160,7 @@ Eight DynamoDB tables (one per entity, simpler for two people than single-table 
 | ExamStudents | examId / studentEmail | absent, totalScore, maxScore | byStudent: studentEmail |
 | Answers | examId#studentEmail / questionNumber | imageKey, attempt, status, failReason, language, rawTranscription, correctedCode, fixes, estimatedComplexity, meetsComplexity, testsPassed, testsTotal, verdicts, score, override | — |
 | Appeals | appealId | examId, studentEmail, questionNumber, message, status (OPEN, RERUN, CLOSED), handledBy, note | byExam: examId + status |
-| AuditLog | entityKey / timestamp | actor, action, before, after, reason | byActor: actor |
+| AuditLog | entityKey / timestamp | actor, action, before, after, reason; for super admin requests also method, path, targetIds, statusCode, outcome | byActor: actor |
 
 - `verdicts` holds one verdict per test. For small failed tests it also keeps the input, expected output and student output, each cut to 200 characters; large tests keep only the verdict. This stays well under DynamoDB's 400 KB item limit.
 - Displayed score = `override.score` if an override exists, otherwise `score`.
@@ -181,7 +181,7 @@ This replaces the earlier plan of storing a test-case JSON next to each image: t
 
 All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda then loads the caller's role and batch assignments from `Users` and rejects anything outside them.
 
-**Sign-in:** Cognito user pool with Google as the identity provider. A pre-sign-up Lambda rejects any email outside the college domain or not already in `Users`, so only pre-registered people can log in.
+**Sign-in:** Cognito user pool with Google as the identity provider. A pre-sign-up Lambda rejects any email that is neither on the college domain nor one of the founders' addresses (`superAdminEmails` in `infra/cdk.json`), and any email not already in `Users`, so only pre-registered people can log in. Founder accounts are plain super admin users: separate from student accounts, never importable as students, with no extra restrictions.
 
 | Method and path | Who | Does |
 | --- | --- | --- |
@@ -235,6 +235,8 @@ Students see nothing until a batch manager publishes the exam; after that, appea
 4. The student sees the appeal status and the reviewer's note.
 
 **Overrides.** Only super admins can override a score, with a required reason. The audit log keeps the actor, time, old and new score, and reason; the student's view shows "Score adjusted by admin". An override stays in place through re-runs until a super admin clears it. An override can't be set on a student marked absent; unmark absent first.
+
+**Super admin audit.** The API wrapper that every route goes through writes an audit entry for each request a super admin makes with POST, PUT, PATCH or DELETE, and for their reads of `GET /exams/{id}/results` and `GET /answers/...`: actor, method, path, target ids, time and outcome (success, denied, rejected or error). Request bodies are never stored. If an entry cannot be written, the request still completes and the entry is logged as an error.
 
 **Absent.** The batch manager marks a student absent in the upload app. While marked absent, uploads for that student are blocked; unmarking re-enables them.
 

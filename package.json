@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "build": "pnpm -r build",
-    "test:worker-docker": "pnpm --filter @yulove/worker test:docker"
+    "test:worker-docker": "pnpm --filter @yulove/worker test:docker",
+    "seed:super-admins": "pnpm --filter @yulove/scripts seed:super-admins"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

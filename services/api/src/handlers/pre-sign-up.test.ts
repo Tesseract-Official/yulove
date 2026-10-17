@@ -2,7 +2,7 @@ import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { Context, PreSignUpTriggerEvent } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { handler } from './pre-sign-up.js';
+import { handler, mayAttemptSignUp } from './pre-sign-up.js';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 
@@ -27,6 +27,7 @@ describe('pre-sign-up handler', () => {
     ddbMock.reset();
     process.env['COLLEGE_DOMAIN'] = 'college.edu';
     process.env['USERS_TABLE'] = 'Users';
+    delete process.env['SUPER_ADMIN_EMAILS'];
   });
 
   it('allows a registered user on the college domain', async () => {
@@ -80,5 +81,74 @@ describe('pre-sign-up handler', () => {
     delete process.env['COLLEGE_DOMAIN'];
 
     await expect(run('student@college.edu')).rejects.toThrow(/COLLEGE_DOMAIN/);
+  });
+
+  describe('founder super admins', () => {
+    beforeEach(() => {
+      process.env['SUPER_ADMIN_EMAILS'] = 'founder@gmail.com, Cofounder@Gmail.com';
+    });
+
+    it('allows a listed founder who is in the Users table', async () => {
+      ddbMock
+        .on(GetCommand)
+        .resolves({ Item: { email: 'founder@gmail.com', role: 'SUPER_ADMIN' } });
+
+      const event = makeEvent('founder@gmail.com');
+      await expect(handler(event, {} as Context, () => undefined)).resolves.toBe(event);
+      expect(ddbMock.commandCalls(GetCommand)[0]?.args[0].input.Key).toEqual({
+        email: 'founder@gmail.com',
+      });
+    });
+
+    it('compares in lower case, on both sides', async () => {
+      ddbMock.on(GetCommand).resolves({ Item: { email: 'cofounder@gmail.com' } });
+
+      await expect(run('COFOUNDER@gmail.com')).resolves.toBeDefined();
+      expect(ddbMock.commandCalls(GetCommand)[0]?.args[0].input.Key).toEqual({
+        email: 'cofounder@gmail.com',
+      });
+    });
+
+    it('still rejects a founder who is not in the Users table', async () => {
+      ddbMock.on(GetCommand).resolves({});
+
+      await expect(run('founder@gmail.com')).rejects.toThrow(/not been registered/);
+    });
+
+    it.each([
+      ['another address on the same provider', 'someone@gmail.com'],
+      ['a look-alike domain', 'founder@gmail.com.evil.com'],
+      ['a plus-address', 'founder+x@gmail.com'],
+      ['a prefix of the address', 'xfounder@gmail.com'],
+      ['a different provider', 'founder@googlemail.com'],
+    ])('rejects %s without touching the Users table', async (_label, email) => {
+      await expect(run(email)).rejects.toThrow(/limited to college/);
+      expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
+    });
+
+    it('still allows college addresses that are in the Users table', async () => {
+      ddbMock.on(GetCommand).resolves({ Item: { email: 'student@college.edu' } });
+
+      await expect(run('student@college.edu')).resolves.toBeDefined();
+    });
+  });
+});
+
+describe('mayAttemptSignUp', () => {
+  const founders = new Set(['founder@gmail.com']);
+
+  it.each([
+    ['student@college.edu', true],
+    ['founder@gmail.com', true],
+    ['other@gmail.com', false],
+    ['student@mail.college.edu', false],
+    ['', false],
+    [undefined, false],
+  ])('%j -> %s', (email, expected) => {
+    expect(mayAttemptSignUp(email, 'college.edu', founders)).toBe(expected);
+  });
+
+  it('treats no founders as an empty list', () => {
+    expect(mayAttemptSignUp('founder@gmail.com', 'college.edu', new Set())).toBe(false);
   });
 });

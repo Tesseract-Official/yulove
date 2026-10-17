@@ -39,6 +39,7 @@ describe('AuthStack', () => {
       Environment: {
         Variables: Match.objectLike({
           COLLEGE_DOMAIN: 'college.edu',
+          SUPER_ADMIN_EMAILS: 'founder@gmail.com,cofounder@gmail.com',
           USERS_TABLE: Match.anyValue(),
         }),
       },

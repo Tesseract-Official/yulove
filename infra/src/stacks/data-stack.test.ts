@@ -172,3 +172,10 @@ describe('DataStack secrets', () => {
     expect(GEMINI_SECRET_NAME).toBe('dsa-judge/gemini-api-key');
   });
 });
+
+describe('DataStack outputs', () => {
+  it('exports the Users table name, which pnpm seed:super-admins reads', () => {
+    const outputs = template.toJSON().Outputs as Record<string, unknown>;
+    expect(Object.keys(outputs)).toContain('UsersTableName');
+  });
+});

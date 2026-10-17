@@ -1,5 +1,5 @@
 import { putAuditItem } from './db/audit-log.js';
-import { examStudentKey } from './types.js';
+import { examStudentKey, type AuditLogItem } from './types.js';
 import { normaliseEmail } from './identity.js';
 
 const MAX_COLLISION_RETRIES = 5;
@@ -16,9 +16,24 @@ export function answerEntityKey(
 /**
  * Appends an entry to the audit log with the current time as an ISO timestamp.
  * Entries are never overwritten: if two entries for one entity land in the same millisecond,
- * the later one is written 1 ms on.
+ * the later one is written 1 ms on. Returns the timestamp it was written with.
  */
-export async function writeAudit(
+export async function appendAudit(
+  entry: Omit<AuditLogItem, 'timestamp'>,
+  now: () => Date = () => new Date(),
+): Promise<string> {
+  let time = now().getTime();
+  for (let attempt = 0; attempt <= MAX_COLLISION_RETRIES; attempt += 1) {
+    const timestamp = new Date(time).toISOString();
+    const written = await putAuditItem({ ...entry, timestamp });
+    if (written) return timestamp;
+    time += 1;
+  }
+  throw new Error(`Could not write an audit entry for ${entry.entityKey}`);
+}
+
+/** Appends an entry for an entity: who changed what, from and to what, and why. */
+export function writeAudit(
   entityKey: string,
   actor: string,
   action: string,
@@ -27,20 +42,8 @@ export async function writeAudit(
   reason: string,
   now: () => Date = () => new Date(),
 ): Promise<string> {
-  let time = now().getTime();
-  for (let attempt = 0; attempt <= MAX_COLLISION_RETRIES; attempt += 1) {
-    const timestamp = new Date(time).toISOString();
-    const written = await putAuditItem({
-      entityKey,
-      timestamp,
-      actor: normaliseEmail(actor),
-      action,
-      before,
-      after,
-      reason,
-    });
-    if (written) return timestamp;
-    time += 1;
-  }
-  throw new Error(`Could not write an audit entry for ${entityKey}`);
+  return appendAudit(
+    { entityKey, actor: normaliseEmail(actor), action, before, after, reason },
+    now,
+  );
 }

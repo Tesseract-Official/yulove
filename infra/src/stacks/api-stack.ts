@@ -4,6 +4,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { UserPool, UserPoolClient } from 'aws-cdk-lib/aws-cognito';
 import type { Table } from 'aws-cdk-lib/aws-dynamodb';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import type { IFunction } from 'aws-cdk-lib/aws-lambda';
 import type { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
@@ -17,7 +18,10 @@ import type { QueueName } from './queue-stack.js';
 
 export type Access = 'read' | 'write' | 'readWrite';
 
-/** What a route's Lambda may touch. Anything not listed is not granted. */
+/**
+ * What a route's Lambda may touch. Anything not listed is not granted, except that every route
+ * may append (PutItem only) to the AuditLog table.
+ */
 export interface RoutePermissions {
   tables?: Partial<Record<TableName, Access>>;
   queues?: Partial<Record<QueueName, 'send'>>;
@@ -113,6 +117,16 @@ export class ApiStack extends Stack {
     const id = `${method}${path}`.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const environment: Record<string, string> = { ...options.environment };
     const grants: Array<(fn: NodejsFunction) => void> = [];
+
+    // Every route can append to the audit log and nothing more (apiHandler writes the entries for
+    // super admin requests), so this is added here once rather than per route.
+    const auditLog = this.props.tables.AuditLog;
+    environment[TABLE_ENV.AuditLog] = auditLog.tableName;
+    grants.push((fn) =>
+      fn.addToRolePolicy(
+        new PolicyStatement({ actions: ['dynamodb:PutItem'], resources: [auditLog.tableArn] }),
+      ),
+    );
 
     for (const [name, access] of Object.entries(permissions.tables ?? {}) as [
       TableName,

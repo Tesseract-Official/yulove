@@ -187,8 +187,18 @@ describe('registered routes', () => {
     it('has exactly the table access it needs, and none on the other tables', () => {
       const statements = statementsFor(template, routeKey);
       for (const table of TABLES) {
-        expect(accessTo(statements, `${table}Table`), table).toBe(expected.tables[table] ?? 'none');
+        // Every route may add to the audit log (see the next test); nothing else on it.
+        const want = table === 'AuditLog' ? 'write' : (expected.tables[table] ?? 'none');
+        expect(accessTo(statements, `${table}Table`), table).toBe(want);
       }
+    });
+
+    it('can only PutItem on the audit log: no reads, updates, deletes or batch writes', () => {
+      const statements = statementsFor(template, routeKey).filter((s) =>
+        JSON.stringify(s.Resource).includes('AuditLogTable'),
+      );
+      expect(statements.flatMap(actionsOf)).toEqual(['dynamodb:PutItem']);
+      expect(JSON.stringify(statements.map((s) => s.Resource))).not.toContain('index');
     });
 
     it('cannot touch queues or secrets', () => {
@@ -271,7 +281,10 @@ describe('registered routes', () => {
             })[t as 'Users'],
         )
         .sort();
-      expect(vars.filter((v) => v.endsWith('_TABLE')).sort()).toEqual(wantedTables);
+      // The audit log table is on every route (see above).
+      expect(vars.filter((v) => v.endsWith('_TABLE')).sort()).toEqual(
+        [...wantedTables, 'AUDIT_LOG_TABLE'].sort(),
+      );
       expect(vars.includes('BUCKET_NAME')).toBe(Boolean(expected.bucket));
       expect(vars.includes('TESTGEN_FUNCTION_NAME')).toBe(Boolean(expected.invokesTestGeneration));
       expect(vars.filter((v) => v.endsWith('_QUEUE_URL'))).toEqual([]);

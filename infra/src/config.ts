@@ -13,7 +13,11 @@ export interface AppConfig {
   geminiTranscribeModel: string;
   /** Who is emailed when spending reaches 80% and 100% of the monthly budget. */
   budgetEmail: string;
+  /** Founders who may sign in as SUPER_ADMIN with a non-college address; lower case, no duplicates. */
+  superAdminEmails: string[];
 }
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function requiredContext(node: Node, key: string): string {
   const value: unknown = node.tryGetContext(key);
@@ -23,6 +27,32 @@ function requiredContext(node: Node, key: string): string {
     );
   }
   return value.trim();
+}
+
+/**
+ * A JSON list in cdk.json, or a comma-separated string from `-c superAdminEmails=a@x.com,b@y.com`.
+ */
+function superAdminEmails(node: Node): string[] {
+  const raw: unknown = node.tryGetContext('superAdminEmails');
+  const items: unknown[] =
+    typeof raw === 'string' ? raw.split(',') : Array.isArray(raw) ? (raw as unknown[]) : [];
+  const emails = [
+    ...new Set(
+      items.map((item) => (typeof item === 'string' ? item.trim().toLowerCase() : String(item))),
+    ),
+  ].filter((email) => email !== '');
+
+  if (emails.length === 0) {
+    throw new Error(
+      'Missing CDK context "superAdminEmails": a list of founder email addresses (see infra/cdk.json).',
+    );
+  }
+  for (const email of emails) {
+    if (!EMAIL_SHAPE.test(email)) {
+      throw new Error(`superAdminEmails must contain email addresses, got "${email}".`);
+    }
+  }
+  return emails;
 }
 
 export function readConfig(node: Node): AppConfig {
@@ -52,5 +82,12 @@ export function readConfig(node: Node): AppConfig {
     throw new Error(`budgetEmail must be an email address, got "${budgetEmail}".`);
   }
 
-  return { collegeDomain, webOrigins, geminiTestgenModel, geminiTranscribeModel, budgetEmail };
+  return {
+    collegeDomain,
+    webOrigins,
+    geminiTestgenModel,
+    geminiTranscribeModel,
+    budgetEmail,
+    superAdminEmails: superAdminEmails(node),
+  };
 }

@@ -86,15 +86,21 @@ describe('ApiStack.addRoute', () => {
     });
   });
 
-  it('grants nothing and sets no resource env vars when no permissions are given', () => {
+  it('grants only PutItem on the audit log when no permissions are given', () => {
     const { api, templates } = buildApp();
     api.addRoute(HttpMethod.GET, '/health', ENTRY);
     const template = templates.api;
 
-    expect(Object.keys(template.findResources('AWS::IAM::Policy'))).toHaveLength(0);
+    const policies = Object.values(template.findResources('AWS::IAM::Policy'));
+    expect(policies).toHaveLength(1);
+    expect(policies[0]?.Properties.PolicyDocument.Statement).toEqual([
+      { Action: 'dynamodb:PutItem', Effect: 'Allow', Resource: expect.anything() },
+    ]);
     const fn = Object.values(template.findResources('AWS::Lambda::Function'))[0];
     const vars = (fn?.Properties.Environment?.Variables ?? {}) as Record<string, string>;
-    expect(Object.keys(vars).filter((k) => /TABLE|QUEUE|BUCKET/.test(k))).toEqual([]);
+    expect(Object.keys(vars).filter((k) => /TABLE|QUEUE|BUCKET/.test(k))).toEqual([
+      'AUDIT_LOG_TABLE',
+    ]);
   });
 });
 

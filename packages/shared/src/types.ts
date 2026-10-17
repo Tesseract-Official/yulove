@@ -167,7 +167,14 @@ export interface AppealItem {
   createdAt: string;
 }
 
-/** AuditLog: key `entityKey` / `timestamp` (ISO string). Index byActor (actor). */
+/** What happened to a request a super admin made. */
+export type RequestOutcome = 'success' | 'denied' | 'rejected' | 'error';
+
+/**
+ * AuditLog: key `entityKey` / `timestamp` (ISO string). Index byActor (actor).
+ * The last five fields are set only on the entries the API wrapper writes for super admin requests
+ * (entityKey `request#<requestId>`, action = the route, e.g. `POST /exams/{id}/pdf`).
+ */
 export interface AuditLogItem {
   entityKey: string;
   timestamp: string;
@@ -176,6 +183,13 @@ export interface AuditLogItem {
   before: unknown;
   after: unknown;
   reason: string;
+  method?: string;
+  /** The path as requested, without the query string. Never the body. */
+  path?: string;
+  /** Path parameters, plus the ids of anything the request created. */
+  targetIds?: Record<string, string>;
+  statusCode?: number;
+  outcome?: RequestOutcome;
 }
 
 export function examStudentKey(examId: string, studentEmail: string): string {

@@ -50,6 +50,51 @@ export async function seedSuperAdmin(
   );
 }
 
+export interface SeedOutcome {
+  email: string;
+  status: SeedResult | 'failed';
+  /** Why it failed. */
+  message?: string;
+}
+
+/**
+ * Seeds each email as SUPER_ADMIN. One bad address or conflicting account does not stop the
+ * others; every email gets its own outcome. Never overwrites an existing user.
+ */
+export async function seedSuperAdmins(
+  client: DynamoDBDocumentClient,
+  table: string,
+  emails: readonly string[],
+  name?: string,
+): Promise<SeedOutcome[]> {
+  const outcomes: SeedOutcome[] = [];
+  for (const raw of emails) {
+    try {
+      const email = normaliseEmail(raw);
+      outcomes.push({ email, status: await seedSuperAdmin(client, table, email, name) });
+    } catch (error) {
+      outcomes.push({
+        email: raw,
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return outcomes;
+}
+
+/** One line per outcome, for the console. */
+export function describeOutcome(outcome: SeedOutcome, table: string): string {
+  switch (outcome.status) {
+    case 'created':
+      return `Added ${outcome.email} to ${table} as ${SUPER_ADMIN}.`;
+    case 'already-seeded':
+      return `${outcome.email} is already a ${SUPER_ADMIN} in ${table}; nothing changed.`;
+    case 'failed':
+      return `FAILED ${outcome.email}: ${outcome.message ?? 'unknown error'}`;
+  }
+}
+
 async function main(argv: string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -59,23 +104,22 @@ async function main(argv: string[]): Promise<void> {
       name: { type: 'string' },
     },
   });
-  const email = positionals[0];
   const table = values.table ?? process.env['USERS_TABLE'];
-  if (!email || !table) {
+  if (positionals.length === 0 || !table) {
     throw new Error(
-      'Usage: USERS_TABLE=<table> tsx seed-super-admin.ts <email> [--name "Full Name"] [--table <table>]',
+      'Usage: USERS_TABLE=<table> tsx seed-super-admin.ts <email> [<email> ...] [--name "Full Name"] [--table <table>]',
     );
+  }
+  if (values.name !== undefined && positionals.length > 1) {
+    throw new Error('--name can only be used with a single email.');
   }
 
   const client = DynamoDBDocumentClient.from(
     new DynamoDBClient({ region: process.env['AWS_REGION'] ?? 'ap-south-1' }),
   );
-  const result = await seedSuperAdmin(client, table, email, values.name);
-  console.log(
-    result === 'created'
-      ? `Added ${normaliseEmail(email)} to ${table} as ${SUPER_ADMIN}.`
-      : `${normaliseEmail(email)} is already a ${SUPER_ADMIN} in ${table}; nothing changed.`,
-  );
+  const outcomes = await seedSuperAdmins(client, table, positionals, values.name);
+  for (const outcome of outcomes) console.log(describeOutcome(outcome, table));
+  if (outcomes.some((outcome) => outcome.status === 'failed')) process.exitCode = 1;
 }
 
 const entry = process.argv[1];

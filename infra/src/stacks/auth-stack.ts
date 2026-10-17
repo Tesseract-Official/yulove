@@ -19,6 +19,8 @@ export const GOOGLE_OAUTH_SECRET_NAME = 'dsa-judge/google-oauth';
 
 export interface AuthStackProps extends StackProps {
   collegeDomain: string;
+  /** Founders (lower case) who may sign in as super admins from a non-college address. */
+  superAdminEmails: string[];
   webOrigins: string[];
   usersTable: Table;
 }
@@ -34,9 +36,11 @@ export class AuthStack extends Stack {
 
     this.preSignUpFunction = createNodeFunction(this, 'PreSignUpFunction', {
       entry: serviceEntry('api/src/handlers/pre-sign-up.ts'),
-      description: 'Rejects sign-ups outside the college domain or not listed in Users',
+      description:
+        'Rejects sign-ups outside the college domain and founder list, or not listed in Users',
       environment: {
         COLLEGE_DOMAIN: props.collegeDomain,
+        SUPER_ADMIN_EMAILS: props.superAdminEmails.join(','),
         USERS_TABLE: props.usersTable.tableName,
       },
     });
