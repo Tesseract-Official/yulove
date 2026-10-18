@@ -5,7 +5,7 @@ import { executeMsg, type AnswerItem } from '@yulove/shared';
 import { FakeDb } from '@yulove/shared/testing';
 import { mockClient } from 'aws-sdk-client-mock';
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { GeminiApiError } from '../lib/gemini.js';
 import { loadPromptFile } from '../lib/prompt.js';
 import { GeminiBusyError } from '../lib/retry.js';
@@ -615,5 +615,63 @@ describe('things that go wrong around Gemini', () => {
     const [outcome] = await handlerFor(new Scripted([goodReply()]))(event());
     expect(outcome).toMatchObject({ outcome: 'failed', failReason: 'WORKER_ERROR' });
     expect(answer()?.failDetail).toMatch(/geminiTranscribeModel/);
+  });
+});
+
+describe('the AppError metric', () => {
+  const appErrors = (log: MockInstance<typeof console.log>) =>
+    log.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith('{'))
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line['AppError'] === 1);
+
+  let log: MockInstance<typeof console.log>;
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('counts an error nobody planned for', async () => {
+    s3.on(GetObjectCommand).rejects(new Error('S3 exploded'));
+    await handlerFor(new Scripted([goodReply()]))(event());
+    expect(appErrors(log)).toEqual([expect.objectContaining({ source: 'transcribe' })]);
+  });
+
+  it('counts a worker queue that cannot be reached', async () => {
+    sqs.on(SendMessageCommand).rejects(new Error('queue down'));
+    await handlerFor(new Scripted([goodReply()]))(event());
+    expect(appErrors(log)).toHaveLength(1);
+  });
+
+  it('counts a message that cannot be read', async () => {
+    await handlerFor(new Scripted([]))({ Records: [{ body: 'not json' }] });
+    expect(appErrors(log)).toHaveLength(1);
+  });
+
+  it('does not count the redelivery it asks for when Gemini is busy', async () => {
+    await expect(handlerFor(rateLimitedFourTimes())(busyEvent())).rejects.toThrow(GeminiBusyError);
+    expect(appErrors(log)).toEqual([]);
+  });
+
+  it('does not count a handled FAILED_TO_GRADE (an unreadable page)', async () => {
+    await handlerFor(
+      new Scripted([goodReply({ readable: false, correctedCode: '', driverCode: '' })]),
+    )(event());
+    expect(answer()?.status).toBe('FAILED_TO_GRADE');
+    expect(appErrors(log)).toEqual([]);
+  });
+
+  it('does not count an answer that fails because its question has no approved tests', async () => {
+    db.put('Questions', { ...question, testStatus: 'NEEDS_REVIEW' });
+    await handlerFor(new Scripted([goodReply()]))(event());
+    expect(answer()?.status).toBe('FAILED_TO_GRADE');
+    expect(appErrors(log)).toEqual([]);
+  });
+
+  it('does not count a good answer', async () => {
+    await handlerFor(new Scripted([goodReply()]))(event());
+    expect(appErrors(log)).toEqual([]);
   });
 });

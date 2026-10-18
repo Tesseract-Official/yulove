@@ -5,7 +5,7 @@ import { executeMsg, type QuestionItem } from '@yulove/shared';
 import { questionsDb } from '@yulove/shared/server';
 import { FakeDb } from '@yulove/shared/testing';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { GeminiApiError, type GeminiClient, type GenerateJsonRequest } from '../lib/gemini.js';
 import { GeminiBusyError } from '../lib/retry.js';
 import { loadPromptFile } from '../lib/prompt.js';
@@ -649,6 +649,18 @@ describe('a busy Gemini', () => {
       expect(sqs.commandCalls(SendMessageCommand)).toHaveLength(0);
     });
 
+    it('counts no AppError for the redelivery it asks for, nor when the third try fails the round', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      await expect(handler(new FakeGemini(busy()()))(generateEvent)).rejects.toThrow(
+        GeminiBusyError,
+      );
+      db.put('Questions', baseQuestion({ testGenTries: MAX_BUSY_TRIES - 1 }));
+      await handler(new FakeGemini(busy()()))(generateEvent);
+      expect(log.mock.calls.filter((c) => String(c[0]).includes('"AppError"'))).toEqual([]);
+      vi.restoreAllMocks();
+    });
+
     it('second time: still throws', async () => {
       db.put('Questions', baseQuestion({ testGenTries: 1 }));
       await expect(handler(new FakeGemini(busy()()))(generateEvent)).rejects.toThrow(
@@ -790,5 +802,44 @@ describe('a busy Gemini', () => {
       expect(result).toEqual({ outcome: 'sent', attempt: 3 });
       expect(stored()).not.toHaveProperty('testGenTries');
     });
+  });
+});
+
+describe('the AppError metric', () => {
+  const appErrors = (log: MockInstance<typeof console.log>) =>
+    log.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith('{'))
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line['AppError'] === 1);
+
+  let log: MockInstance<typeof console.log>;
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('counts a failure nobody planned for (S3 refusing the save)', async () => {
+    s3.on(PutObjectCommand).rejects(new Error('AccessDenied'));
+    await handlerFor(new FakeGemini([validReply()]))(generateEvent);
+    expect(appErrors(log)).toEqual([expect.objectContaining({ source: 'generate-tests' })]);
+  });
+
+  it('counts a queue that cannot be reached', async () => {
+    sqs.on(SendMessageCommand).rejects(new Error('queue gone'));
+    await handlerFor(new FakeGemini([validReply()]))(generateEvent);
+    expect(appErrors(log)).toHaveLength(1);
+  });
+
+  it('does not count a reply that is not usable (a planned GENERATION_FAILED)', async () => {
+    await handlerFor(new FakeGemini(['this is not JSON']))(generateEvent);
+    expect(stored()?.testStatus).toBe('GENERATION_FAILED');
+    expect(appErrors(log)).toEqual([]);
+  });
+
+  it('does not count a good run', async () => {
+    await handlerFor(new FakeGemini([validReply()]))(generateEvent);
+    expect(appErrors(log)).toEqual([]);
   });
 });

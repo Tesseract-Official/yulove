@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp, TEST_CONTEXT } from '../testing.js';
 import {
   FAILED_TO_GRADE_PER_HOUR,
-  LAMBDA_ERRORS_PER_5_MINUTES,
+  APP_ERRORS_PER_5_MINUTES,
   MAX_ALARMS_IN_APP,
   MONITORING_ALARM_COUNT,
   QUEUE_AGE_ALARM_SECONDS,
@@ -51,22 +51,26 @@ describe('MonitoringStack alarms', () => {
     expect(MONITORING_ALARM_COUNT).toBe(5);
   });
 
-  it.each(['transcribe', 'execute', 'results'])(
-    'alarms when the oldest message on the %s queue is over 15 minutes old',
-    (queue) => {
+  it.each([
+    ['transcribe', 3600],
+    ['execute', 3600],
+    ['results', 900],
+  ] as const)(
+    'alarms when the oldest message on the %s queue is over %i seconds old',
+    (queue, seconds) => {
       const alarm = alarmNamed(`dsa-judge-${queue}-queue-oldest-message`);
       expect(alarm).toMatchObject({
         Namespace: 'AWS/SQS',
         MetricName: 'ApproximateAgeOfOldestMessage',
         Statistic: 'Maximum',
         Period: 300,
-        Threshold: 900,
+        Threshold: seconds,
         ComparisonOperator: 'GreaterThanThreshold',
         EvaluationPeriods: 1,
         TreatMissingData: 'notBreaching',
       });
       expect(JSON.stringify(alarm['Dimensions'])).toContain(`${queue}Queue`);
-      expect(QUEUE_AGE_ALARM_SECONDS).toBe(900);
+      expect(QUEUE_AGE_ALARM_SECONDS[queue]).toBe(seconds);
     },
   );
 
@@ -83,17 +87,26 @@ describe('MonitoringStack alarms', () => {
     expect(FAILED_TO_GRADE_PER_HOUR).toBe(20);
   });
 
-  it('alarms on Lambda errors across the region with one alarm, no function dimension', () => {
-    const alarm = alarmNamed('dsa-judge-lambda-errors');
+  it('alarms on more than 5 AppError metrics in 5 minutes, from this app only', () => {
+    const alarm = alarmNamed('dsa-judge-app-errors');
     expect(alarm).toMatchObject({
-      Namespace: 'AWS/Lambda',
-      MetricName: 'Errors',
+      Namespace: 'DsaJudge',
+      MetricName: 'AppError',
       Statistic: 'Sum',
       Period: 300,
-      Threshold: LAMBDA_ERRORS_PER_5_MINUTES,
+      Threshold: APP_ERRORS_PER_5_MINUTES,
       ComparisonOperator: 'GreaterThanThreshold',
+      EvaluationPeriods: 1,
+      TreatMissingData: 'notBreaching',
     });
+    expect(APP_ERRORS_PER_5_MINUTES).toBe(5);
     expect(alarm).not.toHaveProperty('Dimensions');
+  });
+
+  it('no longer watches the account-wide AWS/Lambda Errors metric', () => {
+    for (const a of Object.values(template.findResources('AWS::CloudWatch::Alarm'))) {
+      expect(a.Properties.Namespace).not.toBe('AWS/Lambda');
+    }
   });
 
   it('tells the topic when an alarm starts and when it clears', () => {

@@ -1,4 +1,4 @@
-import { errorResponse, ValidationError } from '@yulove/shared';
+import { emitAppError, errorResponse, ValidationError } from '@yulove/shared';
 import { auditSuperAdminRequest } from '@yulove/shared/server';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 
@@ -16,6 +16,7 @@ export interface ApiResult {
  * Every route goes through here, so this is also where super admin activity is audited: once the
  * response is known, a SUPER_ADMIN's changes (POST, PUT, PATCH, DELETE) and reads of results and
  * answers are written to the audit log. A route cannot skip it, and it never changes the response.
+ * A 5xx response also counts one `AppError` metric, which the alarm on app errors watches.
  */
 export function apiHandler(handle: (event: ApiEvent) => Promise<ApiResult>) {
   return async (event: ApiEvent): Promise<APIGatewayProxyResultV2 & { statusCode: number }> => {
@@ -30,6 +31,8 @@ export function apiHandler(handle: (event: ApiEvent) => Promise<ApiResult>) {
     } catch (error) {
       response = errorResponse(error) as typeof response;
     }
+    // Any 5xx is the app failing (a bug, AWS down, the queue unreachable), not the caller's mistake.
+    if (response.statusCode >= 500) emitAppError(`api ${event.routeKey ?? ''}`.trim());
     await auditSuperAdminRequest(event, response);
     return response;
   };

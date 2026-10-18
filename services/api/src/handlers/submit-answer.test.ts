@@ -159,7 +159,7 @@ describe('POST /answers/submit', () => {
       });
     });
 
-    it('counts one FailedToGrade metric for it', async () => {
+    it('counts one FailedToGrade metric for it, and one AppError for the 503', async () => {
       sqs.on(SendMessageCommand).rejects(new Error('queue down'));
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -167,9 +167,10 @@ describe('POST /answers/submit', () => {
       await call(MANAGER);
 
       const lines = log.mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
-      expect(lines).toEqual([
-        expect.objectContaining({ FailedToGrade: 1, reason: 'WORKER_ERROR' }),
+      expect(lines.filter((l) => l['FailedToGrade'] === 1)).toEqual([
+        expect.objectContaining({ reason: 'WORKER_ERROR' }),
       ]);
+      expect(lines.filter((l) => l['AppError'] === 1)).toHaveLength(1);
       log.mockRestore();
     });
   });

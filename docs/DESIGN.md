@@ -68,7 +68,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 | Execution | Node.js 22 service in JavaScript, ECS Fargate, 1 task, public subnet with a public IP, scales to zero | Also runs reference solutions during question setup |
 | Storage | DynamoDB (on-demand) + one S3 bucket | No other database |
 | Exam PDF | Lambda with a PDF library (e.g. PDFKit) | Stored in S3, downloaded through a presigned link |
-| Monitoring | CloudWatch logs (kept 30 days) and alarms that email the founders through an SNS topic | Oldest-message age on each queue; count of `FAILED_TO_GRADE` per hour; Lambda errors; plus the worker's two scaling alarms |
+| Monitoring | CloudWatch logs (kept 30 days) and alarms that email the founders through an SNS topic | Oldest-message age on each queue; count of `FAILED_TO_GRADE` per hour; unexpected app errors (API 5xx, unplanned pipeline errors); plus the worker's two scaling alarms |
 
 **Changed from the sketch:** EC2 is now ECS Fargate; EventBridge is dropped; test-case JSON lives per question, not next to each image; a results queue sits between the worker and the Record Lambda as before.
 

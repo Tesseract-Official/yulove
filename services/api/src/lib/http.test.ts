@@ -1,10 +1,17 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ForbiddenError, NotFoundError, type AuditLogItem } from '@yulove/shared';
+import {
+  ConflictError,
+  ForbiddenError,
+  HttpError,
+  NotFoundError,
+  ValidationError,
+  type AuditLogItem,
+} from '@yulove/shared';
 import { requireUser } from '@yulove/shared/server';
 import { FakeDb } from '@yulove/shared/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { invoke, makeEvent, userOf } from '../test-utils/events.js';
 import { handler as createBatch } from '../handlers/create-batch.js';
 import { handler as createStaff } from '../handlers/create-staff.js';
@@ -185,7 +192,7 @@ describe('apiHandler audits super admin requests', () => {
   });
 
   describe('when the audit table cannot be written', () => {
-    let error: ReturnType<typeof vi.spyOn>;
+    let error: MockInstance<typeof console.log>;
     beforeEach(() => {
       error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
@@ -226,5 +233,56 @@ describe('every API handler goes through apiHandler', () => {
     const source = readFileSync(`${dir}${file}`, 'utf8');
     expect(source).toMatch(/export const handler = apiHandler\(/);
     expect(source).not.toMatch(/export (async )?function handler\b/);
+  });
+});
+
+describe('apiHandler counts AppError for 5xx responses only', () => {
+  const appErrors = (log: MockInstance<typeof console.log>) =>
+    log.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith('{'))
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line['AppError'] === 1);
+
+  let log: MockInstance<typeof console.log>;
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('on an unexpected error (500), naming the route', async () => {
+    const route = apiHandler(() => Promise.reject(new Error('boom')));
+    const { status } = await invoke(
+      route,
+      makeEvent({ method: 'GET', path: '/x', email: FOUNDER }),
+    );
+
+    expect(status).toBe(500);
+    expect(appErrors(log)).toEqual([expect.objectContaining({ source: 'api GET /x' })]);
+  });
+
+  it('on a 503 the route chose to return', async () => {
+    const route = apiHandler(() => Promise.reject(new HttpError(503, 'UNAVAILABLE', 'queue down')));
+    const { status } = await invoke(
+      route,
+      makeEvent({ method: 'POST', path: '/y', email: FOUNDER }),
+    );
+
+    expect(status).toBe(503);
+    expect(appErrors(log)).toHaveLength(1);
+  });
+
+  it.each([
+    ['a success', () => Promise.resolve({ status: 200, body: {} })],
+    ['a 201', () => Promise.resolve({ status: 201, body: {} })],
+    ['a 403', () => Promise.reject(new ForbiddenError())],
+    ['a 404', () => Promise.reject(new NotFoundError())],
+    ['a 409', () => Promise.reject(new ConflictError())],
+    ['a 422', () => Promise.reject(new ValidationError())],
+  ])('not on %s', async (_name, handle) => {
+    const route = apiHandler(handle);
+    await invoke(route, makeEvent({ method: 'GET', path: '/z', email: FOUNDER }));
+    expect(appErrors(log)).toEqual([]);
   });
 });

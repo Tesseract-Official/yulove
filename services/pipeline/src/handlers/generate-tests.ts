@@ -1,6 +1,7 @@
 import { PutObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import {
+  emitAppError,
   executeMsg,
   questionKeys,
   setupDeduplicationId,
@@ -335,6 +336,7 @@ async function busyOutcome(
     tries = await questionsDb.countGenerationTry(event.questionId, event.version, round.attempt);
   } catch (error) {
     console.error('Could not count a busy try', error);
+    emitAppError('generate-tests');
     return undefined;
   }
   if (tries === 'stale') return { outcome: 'stale' };
@@ -371,6 +373,7 @@ export function createHandler(overrides: Partial<Deps> = {}) {
     const parsed = eventSchema.safeParse(raw);
     if (!parsed.success) {
       console.error('Ignoring a malformed test-generation event');
+      emitAppError('generate-tests');
       return { outcome: 'ignored', reason: 'malformed event' };
     }
     const event = parsed.data;
@@ -391,6 +394,9 @@ export function createHandler(overrides: Partial<Deps> = {}) {
       } catch {
         // no key to scrub
       }
+      // A GenerationError is a planned outcome (the question or Gemini's answer was not usable);
+      // anything else is something nobody expected.
+      if (!(error instanceof GenerationError)) emitAppError('generate-tests');
       const reason = describe(error, secrets);
       console.error(`Test generation failed for ${event.questionId} v${event.version}: ${reason}`);
       try {
@@ -402,6 +408,7 @@ export function createHandler(overrides: Partial<Deps> = {}) {
         );
       } catch (writeError) {
         console.error('Could not record the failure', writeError);
+        emitAppError('generate-tests');
       }
       return { outcome: 'failed', reason };
     }

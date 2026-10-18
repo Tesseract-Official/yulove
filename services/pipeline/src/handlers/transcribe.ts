@@ -1,6 +1,7 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ChangeMessageVisibilityCommand, SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import {
+  emitAppError,
   BUCKET_ENV,
   executeMsg,
   messageDeduplicationId,
@@ -89,6 +90,7 @@ async function failAnswer(
     );
   } catch (error) {
     console.error('Could not record the failure', error);
+    emitAppError('transcribe');
   }
   return { outcome: 'failed', failReason, detail };
 }
@@ -228,6 +230,7 @@ async function transcribeOne(
       }),
     );
   } catch (error) {
+    emitAppError('transcribe');
     return failAnswer(
       msg,
       'WORKER_ERROR',
@@ -265,6 +268,7 @@ export function createHandler(overrides: Partial<Deps> = {}) {
       } catch {
         // Nobody can be told about a message that cannot be read. Drop it.
         console.error('Ignoring an unreadable transcribe message');
+        emitAppError('transcribe');
         outcomes.push({ outcome: 'ignored', reason: 'unreadable message' });
         continue;
       }
@@ -274,6 +278,7 @@ export function createHandler(overrides: Partial<Deps> = {}) {
       } catch (error) {
         // Not a failure of the answer: let the invocation fail so SQS delivers the message again.
         if (error instanceof GeminiBusyError) throw error;
+        emitAppError('transcribe');
         let secret = '';
         try {
           secret = await getGeminiApiKey();

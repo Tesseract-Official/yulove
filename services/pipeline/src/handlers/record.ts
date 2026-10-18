@@ -1,5 +1,6 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import {
+  emitAppError,
   computeRawScore,
   countPassed,
   resultMsg,
@@ -103,6 +104,7 @@ async function recordAnswer(msg: AnswerResult): Promise<RecordOutcome> {
   } catch (error) {
     // The answer is recorded; the total is also recomputed by publishing and by absences.
     console.error('Could not update the exam total', error);
+    emitAppError('record');
   }
   return outcome;
 }
@@ -184,6 +186,7 @@ async function giveUp(msg: ResultMsg, error: unknown): Promise<void> {
     }
   } catch (second) {
     console.error('Could not even record the failure', second);
+    emitAppError('record');
   }
 }
 
@@ -208,6 +211,7 @@ export function createHandler(overrides: Partial<Deps> = {}) {
         msg = resultMsg.parse(JSON.parse(record.body));
       } catch {
         console.error('Ignoring an unreadable result message');
+        emitAppError('record');
         outcomes.push({ outcome: 'ignored', reason: 'unreadable message' });
         continue;
       }
@@ -218,6 +222,7 @@ export function createHandler(overrides: Partial<Deps> = {}) {
         );
       } catch (error) {
         console.error(`Could not record a ${msg.type} result`, error);
+        emitAppError('record');
         await giveUp(msg, error);
         outcomes.push({ outcome: 'error', reason: reasonOf(error) });
       }

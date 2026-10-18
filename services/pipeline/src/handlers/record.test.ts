@@ -9,7 +9,7 @@ import type {
 } from '@yulove/shared';
 import { FakeDb } from '@yulove/shared/testing';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { createHandler } from './record.js';
 
 const db = new FakeDb();
@@ -530,5 +530,58 @@ describe('a SETUP result', () => {
     const [outcome] = await createHandler()(event(setupOk));
     process.env['QUESTIONS_TABLE'] = 'Questions';
     expect(outcome).toMatchObject({ outcome: 'error' });
+  });
+});
+
+describe('the AppError metric', () => {
+  const appErrors = (log: MockInstance<typeof console.log>) =>
+    log.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith('{'))
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line['AppError'] === 1);
+
+  let log: MockInstance<typeof console.log>;
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('counts a result that could not be recorded because of a database error', async () => {
+    process.env['EXAMS_TABLE'] = 'no-such-table';
+    await run(completed(verdicts(10)));
+    process.env['EXAMS_TABLE'] = 'Exams';
+    expect(appErrors(log)).toEqual([expect.objectContaining({ source: 'record' })]);
+  });
+
+  it('counts a total that could not be updated', async () => {
+    process.env['EXAM_STUDENTS_TABLE'] = 'no-such-table';
+    await run(completed(verdicts(7)));
+    process.env['EXAM_STUDENTS_TABLE'] = 'ExamStudents';
+    expect(appErrors(log)).toHaveLength(1);
+  });
+
+  it('counts a message that cannot be read', async () => {
+    await run('not json');
+    expect(appErrors(log)).toHaveLength(1);
+  });
+
+  it.each([
+    ['a graded answer', () => completed(verdicts(10))],
+    [
+      'a worker failure the worker reported (FAILED_TO_GRADE)',
+      () => answerFailed('WORKER_ERROR', 'sandbox crashed'),
+    ],
+    ['a worker driver mismatch', () => answerFailed('DRIVER_MISMATCH')],
+  ])('does not count %s', async (_name, message) => {
+    await run(message());
+    expect(appErrors(log)).toEqual([]);
+  });
+
+  it('does not count a stale result', async () => {
+    db.put('Answers', answer({ attempt: 2, status: 'RUNNING' }));
+    await run(completed(verdicts(10), 1));
+    expect(appErrors(log)).toEqual([]);
   });
 });
