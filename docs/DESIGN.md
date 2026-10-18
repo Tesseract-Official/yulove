@@ -71,7 +71,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 | Sign-in | Cognito user pool, Google identity provider, hosted UI with the authorization-code flow (PKCE) | Pre-sign-up check on college domain (or a founder address from `superAdminEmails`) and the `Users` table. The ID token lasts 1 hour and a refresh token 1 day; the app renews the ID token with the refresh token and keeps the session in the browser tab's `sessionStorage` (it survives a reload, not closing the tab). After a day, or if renewal fails, the user signs in again |
 | API | API Gateway HTTP API + one Lambda per route, TypeScript on Node.js 22 | Types shared with the React app. Every route goes through the same wrapper (error mapping, super admin audit). Requests are limited to 50 per second, with a burst of 100. CORS allows only the web origins listed in `webOrigin` in `infra/cdk.json`, which also set the Cognito callback and logout URLs and the bucket's CORS |
 | Queues | SQS FIFO × 3: transcribe, execute, results | Visibility timeouts 12, 10 and 3 minutes. Content-based IDs off; dedup ID includes attempt. No dead-letter queues |
-| AI | Gemini API from Lambda, structured JSON output | API key in Secrets Manager; temperature 0. The model is set per job in `infra/cdk.json`: `geminiTestgenModel` (test generation) and `geminiTranscribeModel` (transcription) |
+| AI | Gemini API from Lambda, structured JSON output | API key in Secrets Manager; temperature 0. The model is set per job in `infra/cdk.json`, and nowhere else: `geminiTestgenModel` (test generation) and `geminiTranscribeModel` (transcription). Both are currently `gemini-3.5-flash-lite`, a temporary choice while the free quota of `gemini-3.6-flash` is used up; switching back means changing only those two values and redeploying |
 | Concurrency | Transcribe Lambda: at most 5 at once; Record Lambda: at most 2 at once | Set on the SQS event source (maximum concurrency), not as reserved concurrency: the AWS account allows only 10 concurrent Lambda executions in total, so nothing can be reserved. This also bounds Gemini traffic and leaves capacity for the API |
 | Execution | Node.js 22 service in JavaScript, ECS Fargate, 1 task (4 vCPU, 8 GB), public subnet with a public IP, scales to zero | Also runs reference solutions during question setup |
 | Storage | DynamoDB (on-demand, point-in-time recovery) + one versioned S3 bucket | No other database |
@@ -318,7 +318,7 @@ Before the first graded exam, run one practice exam on 30–50 real answer sheet
 
 **Open items:**
 
-- [x] Pick the Gemini model (`gemini-3.6-flash` for both jobs; test a different tier on the practice sheets by changing it in `infra/cdk.json`)
+- [x] Pick the Gemini model: `gemini-3.5-flash-lite` for both jobs for now (the free quota of `gemini-3.6-flash` is used up). Go back to `gemini-3.6-flash`, or another tier, by changing `infra/cdk.json` once a paid key is in place, and measure it on the practice sheets
 - [x] Confirm the college email domain for the sign-in check (`collegeDomain` in `infra/cdk.json`)
 - [x] Decide how students leave a batch or the college: they are deactivated, never deleted (`PUT /users/{email}/active`, switches on the Staff page and the batch manager's Students page)
 - [ ] Decide whether teachers can paste their own reference solution instead of Gemini's
