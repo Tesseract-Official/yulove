@@ -35,8 +35,11 @@ import type {
   SaveExamResponse,
   SaveQuestionResponse,
   SetAbsentResponse,
+  SetActiveBody,
+  SetActiveResponse,
   SetOverrideResponse,
   StaffListResponse,
+  StudentListResponse,
   SubmitAnswerBody,
   SubmitAnswerResponse,
   UpdateAppealBody,
@@ -67,7 +70,16 @@ export function createEndpoints(client: ApiClient) {
     assignBatches: (email: string, batchIds: string[]) =>
       client.put<AssignBatchesResponse>(`/staff/${enc(email)}/batches`, { batchIds }),
 
+    /** Switch a person off or on again (super admin: anyone; batch manager: students of their batches). */
+    setUserActive: (email: string, body: SetActiveBody) =>
+      client.put<SetActiveResponse>(`/users/${enc(email)}/active`, body),
+
     // Batch manager
+    listStudents: (batchId: string, search?: string) =>
+      client.get<StudentListResponse>(
+        `/batches/${enc(batchId)}/students`,
+        search ? { search } : undefined,
+      ),
     /** Without a batch: the exams of every batch the caller works with. */
     listExams: (batchId?: string) =>
       client.get<ExamListResponse>('/exams', batchId ? { batchId } : undefined),

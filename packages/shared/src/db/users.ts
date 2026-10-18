@@ -115,3 +115,23 @@ export async function listStaff(): Promise<UserItem[]> {
   // A filter is the database's job, but never let a student through if a test double ignores it.
   return items.filter((u) => u.role === 'TEACHER' || u.role === 'BATCH_MANAGER');
 }
+
+/** Every super admin (the founders), active or not. Scans the small Users table like listStaff. */
+export async function listSuperAdmins(): Promise<UserItem[]> {
+  const items: UserItem[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await docClient().send(
+      new ScanCommand({
+        TableName: table(),
+        FilterExpression: '#role = :admin',
+        ExpressionAttributeNames: { '#role': 'role' },
+        ExpressionAttributeValues: { ':admin': 'SUPER_ADMIN' },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    items.push(...((page.Items ?? []) as UserItem[]));
+    startKey = page.LastEvaluatedKey;
+  } while (startKey);
+  return items.filter((u) => u.role === 'SUPER_ADMIN');
+}

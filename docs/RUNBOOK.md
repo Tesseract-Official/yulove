@@ -138,7 +138,11 @@ They then sign in with that college Google account. Someone who is not in the li
 
 A teacher or batch manager only sees the batches they are assigned to. A teacher only changes the questions and exams they made themselves.
 
-**Taking someone's access away.** There is no button for this yet (it is an open item in the design document). Ask a developer to set `active` to `false` on the person's row in the `Users` table. They stay in the system but every request from them is refused.
+**Taking someone's access away (making them inactive).** Open **Teachers and batch managers**. Each person has an **Active / Inactive** switch. Press it, type the reason (required, and kept in the audit log) and confirm. From then on every request they make is refused: they can still sign in with Google, but the app only shows "Your account isn't registered, or it has been made inactive" and they can do nothing. Inactive people are greyed out with an **Inactive** label. Nothing about them is deleted: their questions, exams, marks and answers stay. Press the switch again, with a reason, to make them active again.
+
+Two protections: you cannot make **yourself** inactive, and the **last active founder** can never be made inactive (so someone can always sign in as a founder). Founders can also switch another founder off through the API, but there is no screen for founders yet.
+
+A batch manager can do the same for **students of their own batches**: see section 4, step 5.
 
 ## 4. Start of a semester
 
@@ -146,7 +150,8 @@ A teacher or batch manager only sees the batches they are assigned to. A teacher
 2. **Assign people to them.** Teachers and batch managers, as in section 3.
 3. **Add the students.** The batch manager opens **Add students**, chooses the file and presses **Upload students**. The file is a CSV file with four columns and a header row: name, college email, roll number, batch. Header spelling is forgiving ("College email", "Roll no" and so on). Up to 2,000 rows. The result lists each row as **created**, **updated** (already there, details refreshed) or **rejected** with the reason (for example an email outside the college domain, a roll number used twice, or a batch the manager is not assigned to). Fix the rejected rows in the file and upload again; rows already created are simply updated.
 4. **Students sign in with their college Gmail.** They open the website and press **Sign in with Google**. They only get in if they were added in step 3. New students can be added at any time; they appear in exams from their first visit.
-5. **Founders never go in the student CSV.** Their addresses are blocked there on purpose.
+5. **When a student leaves**, the batch manager opens **Students**, picks the batch, finds the student and presses their **Active / Inactive** switch, giving a reason. The student is greyed out with an **Inactive** label, can no longer use the app (they see "Your account isn't registered, or it has been made inactive"), and cannot be chosen on the upload screen; their marks and answers are kept. Press the switch again (with a reason) if they come back. A batch manager can only change students of batches they are assigned to. A CSV upload does not make an inactive student active again.
+6. **Founders never go in the student CSV.** Their addresses are blocked there on purpose.
 
 ## 5. A normal week: teachers
 

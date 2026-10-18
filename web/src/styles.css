@@ -1235,3 +1235,51 @@ textarea {
     align-items: start;
   }
 }
+
+/* Someone who has been switched off: greyed out, with a label next to the name. */
+.is-inactive {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.is-inactive .row-title {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--tap);
+  padding: 0 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.switch-track {
+  display: inline-flex;
+  align-items: center;
+  width: 2.5rem;
+  height: 1.4rem;
+  padding: 0.15rem;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.switch-on .switch-track {
+  background: var(--accent);
+  justify-content: flex-end;
+}
+
+.switch-thumb {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #fff;
+}

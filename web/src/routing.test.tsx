@@ -143,7 +143,9 @@ describe('GET /me failures', () => {
     renderApp({ oidc, navigateExternal });
 
     expect(
-      await screen.findByText("Your account isn't registered. Contact your batch manager."),
+      await screen.findByText(
+        "Your account isn't registered, or it has been made inactive. Contact your batch manager.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument(); // not a toast either

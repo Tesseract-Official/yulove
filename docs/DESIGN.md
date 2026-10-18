@@ -200,7 +200,7 @@ Eight DynamoDB tables (one per entity, simpler for two people than single-table 
 - Score formula: `(testsPassed ÷ testsTotal) × marks`, or 0 when `meetsComplexity` is false or the status is not `GRADED` (so also `FAILED_TO_GRADE`). Scores are rounded to 2 decimal places (half up), the exam total is the sum of the rounded question scores. Absent students score 0 on every question and show "Absent".
 - `ExamStudents` has a row for every active student of the batch when the exam is created; a student imported later gets theirs on first access. The totals on it are kept up to date when answers are recorded, overrides are set and absences change, and are worked out again for everyone at publish.
 - Sample and practice data is marked `dev: true` on its items so that `scripts/cleanup-dev-data.ts` can remove exactly that and nothing else (see the runbook).
-- No API route deletes a user or any other data (only the dev-data cleanup script does, and only for items flagged `dev`). `active: false` blocks a user's API calls.
+- No API route deletes a user or any other data (only the dev-data cleanup script does, and only for items flagged `dev`). A person leaves by being deactivated: `active: false` makes every API call from them fail with 403 (the sign-in itself still works at Google/Cognito, and the app shows "Your account isn't registered, or it has been made inactive"), and keeps all their data. Super admins deactivate or reactivate anyone except themselves (and never the last active super admin); batch managers do the same for students of their own batches; the reason is required and the change is written to the audit log (`user#<email>`, action `DEACTIVATE_USER` or `REACTIVATE_USER`, old and new state). Re-importing a student by CSV does not reactivate them.
 
 **S3 layout** (one bucket, versioning on, no public access, objects encrypted):
 
@@ -230,6 +230,7 @@ All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda 
 | `GET /staff` | Super admin | List teachers and batch managers |
 | `POST /staff` | Super admin | Create a teacher or batch manager |
 | `PUT /staff/{email}/batches` | Super admin | Assign a teacher or batch manager to batches |
+| `PUT /users/{email}/active` | Super admin (anyone); batch manager (students of their batches) | Switch a person off or on again with a required reason (audited). Not yourself, and never the last active super admin |
 | `POST /batches/{batchId}/students/import` | Batch manager | Upload the CSV (name, college email, roll number, batch; up to 2,000 rows); returns created, updated and rejected rows |
 | `GET /batches/{batchId}/students?search=` | Batch manager, teacher | Find students by roll number, name or email |
 | `GET /questions` · `GET /questions/{id}` | Teacher | Their own questions (latest version), with test status and how many exams use them |
@@ -319,6 +320,6 @@ Before the first graded exam, run one practice exam on 30–50 real answer sheet
 
 - [x] Pick the Gemini model (`gemini-3.6-flash` for both jobs; test a different tier on the practice sheets by changing it in `infra/cdk.json`)
 - [x] Confirm the college email domain for the sign-in check (`collegeDomain` in `infra/cdk.json`)
-- [ ] Decide how students leave a batch or the college (deactivate vs delete). `active: false` blocks them, but there is no screen or route to set it yet
+- [x] Decide how students leave a batch or the college: they are deactivated, never deleted (`PUT /users/{email}/active`, switches on the Staff page and the batch manager's Students page)
 - [ ] Decide whether teachers can paste their own reference solution instead of Gemini's
 - [ ] Run the practice exam and record how accurate the transcription is

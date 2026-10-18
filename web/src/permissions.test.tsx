@@ -23,6 +23,7 @@ const PAGES = {
   manager: [
     '/manager',
     '/manager/import',
+    '/manager/students',
     '/manager/upload',
     '/manager/board',
     '/manager/answer/exam-1/s1%40college.edu/1',

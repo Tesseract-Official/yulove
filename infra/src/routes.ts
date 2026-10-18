@@ -67,6 +67,12 @@ export const ROUTES: readonly RouteDef[] = [
     permissions: { tables: { Users: 'readWrite', Batches: 'read' } },
   },
   {
+    method: HttpMethod.PUT,
+    path: '/users/{email}/active',
+    handler: 'set-user-active',
+    permissions: { tables: { Users: 'readWrite' } },
+  },
+  {
     method: HttpMethod.POST,
     path: '/batches',
     handler: 'create-batch',

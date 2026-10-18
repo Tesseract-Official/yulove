@@ -47,6 +47,9 @@ export class FakeDb {
   private readonly tables = new Map<TableName, Map<string, Item>>();
   private readonly mock = mockClient(DynamoDBDocumentClient);
 
+  /** Called after every PutItem that was stored, so a test can change data "at the same moment". */
+  onPut: ((table: TableName, item: Item) => void) | undefined;
+
   /** Tables whose PutItem calls fail with an error, for tests of a failing write. */
   readonly failPuts = new Set<TableName>();
 
@@ -63,6 +66,7 @@ export class FakeDb {
     for (const rows of this.tables.values()) rows.clear();
     this.mock.resetHistory();
     this.failPuts.clear();
+    this.onPut = undefined;
   }
 
   /** The calls made with one kind of command, e.g. commandCalls(PutCommand). */
@@ -159,6 +163,7 @@ export class FakeDb {
       const existing = this.rows(table).get(key);
       if (!this.conditionHolds(input.ConditionExpression, input, existing)) throw conditionFailed();
       this.rows(table).set(key, structuredClone(input.Item));
+      this.onPut?.(table, structuredClone(input.Item));
       return {};
     });
 

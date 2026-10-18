@@ -1,4 +1,4 @@
-import { NotFoundError, ValidationError } from '@yulove/shared';
+import { NotFoundError, ValidationError, type StudentListResponse } from '@yulove/shared';
 import { batchesDb, requireUser, usersDb } from '@yulove/shared/server';
 import { apiHandler, pathParam, queryParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
@@ -35,10 +35,12 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       name: u.name,
       rollNo: u.rollNo,
       batchId: u.batchId,
-      active: u.active,
+      // Anyone not switched off is active, including accounts from before the flag mattered.
+      active: u.active !== false,
     }));
 
-  return { status: 200, body: { students } };
+  const body: StudentListResponse = { students };
+  return { status: 200, body };
 }
 
 export const handler = apiHandler(handle);

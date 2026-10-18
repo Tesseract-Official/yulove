@@ -441,3 +441,18 @@ describe('choosing the exam', () => {
     expect(await screen.findByLabelText('Exam')).toBeInTheDocument();
   });
 });
+
+describe('students who have been switched off', () => {
+  it('are greyed out and labelled in the picker, and cannot be chosen', async () => {
+    setup([ASHA, student('dan@college.edu', 'Dan Gone', 'R9', undefined, { active: false })]);
+    start();
+    await chooseExam();
+
+    const dan = (await screen.findByText(/R9 · Dan Gone/)).closest('li') as HTMLElement;
+    expect(dan).toHaveClass('is-inactive');
+    expect(within(dan).getByText('Inactive')).toBeInTheDocument();
+    expect(within(dan).getByRole('button', { name: /Choose R9 · Dan Gone/ })).toBeDisabled();
+    // Everyone else is unchanged.
+    expect(screen.getByRole('button', { name: /Choose .*Asha/ })).toBeEnabled();
+  });
+});

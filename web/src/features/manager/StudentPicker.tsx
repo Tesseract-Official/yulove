@@ -5,6 +5,7 @@ import { useApi } from '../../api/ApiContext.js';
 import { EmptyState } from '../../ui/states.js';
 import { hasPhoto } from '../common/labels.js';
 import { keys } from '../common/hooks.js';
+import { INACTIVE_LABEL } from '../common/labels.js';
 import { Chip } from '../common/ui.js';
 
 /** The most students listed at once. */
@@ -83,16 +84,23 @@ export function StudentPicker({
       ) : (
         <ul className="cards" aria-label="Students">
           {shown.map((student) => (
-            <li key={student.email} className="card-item student">
+            <li
+              key={student.email}
+              className={`card-item student${student.active ? '' : ' is-inactive'}`}
+            >
               <button
                 type="button"
                 className="student-pick"
                 aria-label={`Choose ${label(student)}`}
+                // Answers cannot be uploaded for someone who has been switched off.
+                disabled={!student.active}
                 onClick={() => onPick(student.email)}
               >
                 <span className="row-title">{label(student)}</span>
                 <span className="muted break">{student.email}</span>
-                {student.absent ? (
+                {!student.active ? (
+                  <Chip tone="bad">{INACTIVE_LABEL}</Chip>
+                ) : student.absent ? (
                   <Chip tone="bad">Absent</Chip>
                 ) : (
                   <Chip>

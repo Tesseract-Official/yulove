@@ -106,3 +106,18 @@ describe('GET /batches/{batchId}/students', () => {
     expect((await call('batch-manager@college.edu', 'A', 'x'.repeat(101))).status).toBe(422);
   });
 });
+
+describe('GET /batches/{batchId}/students: who is switched off', () => {
+  it('shows a deactivated student with active false, and everyone else as active', async () => {
+    db.users.get('s3@college.edu')!.active = false;
+    delete (db.users.get('s2@college.edu') as { active?: boolean }).active;
+
+    const { body } = await call('batch-manager@college.edu', 'A');
+    const activeOf = (email: string) =>
+      body.students.find((s: { email: string }) => s.email === email)?.active;
+
+    expect(activeOf('s3@college.edu')).toBe(false);
+    expect(activeOf('s2@college.edu')).toBe(true);
+    expect(activeOf('s10@college.edu')).toBe(true);
+  });
+});

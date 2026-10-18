@@ -4,7 +4,9 @@ import type { StaffMember, StaffRole } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { errorMessage } from '../../api/errors.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
+import { ActiveToggle } from '../common/ActiveToggle.js';
 import { keys, useBatches } from '../common/hooks.js';
+import { INACTIVE_LABEL } from '../common/labels.js';
 import { useQuery } from '@tanstack/react-query';
 import { Chip, Field, Notice, PageHeader } from '../common/ui.js';
 
@@ -76,12 +78,18 @@ function StaffCard({ member, batches }: { member: StaffMember; batches: Batch[] 
   });
 
   return (
-    <li className="card-item">
+    <li className={`card-item${member.active ? '' : ' is-inactive'}`}>
       <div className="card-head">
         <span className="row-title">{member.name}</span>
-        {!member.active ? <Chip tone="bad">Deactivated</Chip> : null}
+        {!member.active ? <Chip tone="bad">{INACTIVE_LABEL}</Chip> : null}
       </div>
       <p className="muted break">{member.email}</p>
+      <p className="actions">
+        <ActiveToggle
+          person={member}
+          onChanged={() => queryClient.invalidateQueries({ queryKey: keys.staff })}
+        />
+      </p>
 
       {editing ? (
         <div className="form">

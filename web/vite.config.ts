@@ -8,5 +8,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Screen tests render the whole app; when the whole workspace's tests run at once they can
+    // pass the 5 second default on a busy machine.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });

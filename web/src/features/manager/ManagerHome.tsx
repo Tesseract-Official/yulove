@@ -10,6 +10,9 @@ export function ManagerHome() {
         <MenuCard to="/manager/import" title="Add students">
           Upload a CSV file with your students’ names, emails and roll numbers.
         </MenuCard>
+        <MenuCard to="/manager/students" title="Students">
+          See your students, and switch off anyone who has left.
+        </MenuCard>
         <MenuCard to="/manager/upload" title="Upload answers">
           Photograph each student’s answer pages and send them for grading.
         </MenuCard>

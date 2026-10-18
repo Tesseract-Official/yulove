@@ -5,6 +5,7 @@ import { useApi } from '../../api/ApiContext.js';
 export const keys = {
   batches: ['batches'] as const,
   staff: ['staff'] as const,
+  students: (batchId: string) => ['students', batchId] as const,
   exams: (batchId: string) => ['exams', batchId] as const,
   board: (examId: string) => ['board', examId] as const,
   allExams: ['exams', 'all'] as const,

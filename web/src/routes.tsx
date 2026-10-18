@@ -7,6 +7,7 @@ import { AnswerPage } from './features/manager/AnswerPage.js';
 import { BoardPage } from './features/manager/BoardPage.js';
 import { ImportPage } from './features/manager/ImportPage.js';
 import { ManagerHome } from './features/manager/ManagerHome.js';
+import { StudentsPage } from './features/manager/StudentsPage.js';
 import { UploadPage } from './features/manager/UploadPage.js';
 import { ExamPage } from './features/teacher/ExamPage.js';
 import { ExamsPage } from './features/teacher/ExamsPage.js';
@@ -48,6 +49,7 @@ export function AppRoutes() {
         <Route path="manager" element={<RequireSection section="BATCH_MANAGER" />}>
           <Route index element={<ManagerHome />} />
           <Route path="import" element={<ImportPage />} />
+          <Route path="students" element={<StudentsPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="board" element={<BoardPage />} />
           <Route path="appeals" element={<AppealsPage section="manager" />} />

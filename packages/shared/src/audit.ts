@@ -13,6 +13,11 @@ export function answerEntityKey(
   return `answer#${examStudentKey(examId, studentEmail)}#${questionNumber}`;
 }
 
+/** Audit key for a person, e.g. when they are deactivated or reactivated. */
+export function userEntityKey(email: string): string {
+  return `user#${normaliseEmail(email)}`;
+}
+
 /**
  * Appends an entry to the audit log with the current time as an ISO timestamp.
  * Entries are never overwritten: if two entries for one entity land in the same millisecond,

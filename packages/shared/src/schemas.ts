@@ -43,6 +43,13 @@ export const overrideBody = z.object({
 });
 export type OverrideBody = z.infer<typeof overrideBody>;
 
+/** PUT /users/{email}/active: switch a person off or on again. A reason is always required. */
+export const setActiveBody = z.object({
+  active: z.boolean(),
+  reason: nonEmptyText(1000),
+});
+export type SetActiveBody = z.infer<typeof setActiveBody>;
+
 /** POST /batches/{batchId}/students/import. Raw CSV text: name, email, roll number, batch. */
 export const importStudentsBody = z.object({
   csv: z.string().min(1).max(1_000_000),

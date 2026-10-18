@@ -133,3 +133,6 @@ export const STUDENT_APPEAL_TEXT: Record<AppealStatus, string> = {
   RERUN: 'Your answer was graded again',
   CLOSED: 'Closed',
 };
+
+/** The word shown next to someone who has been switched off. */
+export const INACTIVE_LABEL = 'Inactive';

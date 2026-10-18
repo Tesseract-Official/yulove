@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StaffMember } from '@yulove/shared';
@@ -127,7 +127,7 @@ describe('teachers and batch managers', () => {
     expect(within(mo).getByText('Batch A')).toBeInTheDocument();
     expect(within(mo).getByText('Batch B')).toBeInTheDocument();
     const gus = screen.getByText('Gus Gone').closest('li') as HTMLElement;
-    expect(within(gus).getByText('Deactivated')).toBeInTheDocument();
+    expect(within(gus).getByText('Inactive', { selector: '.chip' })).toBeInTheDocument();
     expect(within(gus).getByText('No batches yet')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Teachers' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Batch managers' })).toBeInTheDocument();
@@ -267,5 +267,140 @@ describe('teachers and batch managers', () => {
     // (the page loads after the state is emptied)
     expect(await screen.findByText('No teachers yet')).toBeInTheDocument();
     expect(screen.getByText('No batch managers yet')).toBeInTheDocument();
+  });
+});
+
+describe('switching teachers and batch managers on and off', () => {
+  /** A fake API where the switch changes the list, like the real one. */
+  function withSwitch() {
+    return setup('/admin/staff', {
+      'PUT /users/:email/active': (call) => {
+        const body = call.body as { active: boolean };
+        const person = state.staff.find((m) => m.email === call.params['email']);
+        if (person) person.active = body.active;
+        return {
+          user: { email: call.params['email'], name: person?.name, role: person?.role, ...body },
+          changed: true,
+        };
+      },
+    });
+  }
+  let state: { batches: typeof BATCHES; staff: StaffMember[] };
+  const card = (name: string) => screen.getByText(name).closest('li') as HTMLElement;
+
+  function open() {
+    const made = withSwitch();
+    state = made.state;
+    return made;
+  }
+
+  it('shows an Active or Inactive switch on every person, and greys out the inactive ones', async () => {
+    open();
+
+    await screen.findByText('Tina Teacher');
+    const tina = card('Tina Teacher');
+    const gus = card('Gus Gone');
+    expect(within(tina).getByRole('switch', { name: 'Active: Tina Teacher' })).toBeChecked();
+    expect(within(gus).getByRole('switch', { name: 'Inactive: Gus Gone' })).not.toBeChecked();
+    expect(within(gus).getByText('Inactive', { selector: '.chip' })).toBeInTheDocument();
+    expect(gus).toHaveClass('is-inactive');
+    expect(tina).not.toHaveClass('is-inactive');
+    expect(within(tina).queryByText('Inactive', { selector: '.chip' })).not.toBeInTheDocument();
+  });
+
+  it('asks for a reason first, sends nothing without one, and then switches the person off', async () => {
+    const { api } = open();
+    await screen.findByText('Tina Teacher');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Active: Tina Teacher' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Make Tina Teacher inactive' });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Make inactive' }));
+    expect(await within(dialog).findByText(/Write why/)).toBeInTheDocument();
+    expect(api.callsTo('PUT /users/:email/active')).toHaveLength(0);
+
+    await userEvent.type(within(dialog).getByLabelText('Reason'), '  Left the college  ');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Make inactive' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const [call] = api.callsTo('PUT /users/:email/active');
+    expect(call?.path).toBe('/users/tina%40college.edu/active');
+    expect(call?.body).toEqual({ active: false, reason: 'Left the college' });
+
+    // The list is loaded again, so she now shows as inactive.
+    const tina = card('Tina Teacher');
+    await waitFor(() => expect(tina).toHaveClass('is-inactive'));
+    expect(
+      within(card('Tina Teacher')).getByRole('switch', { name: 'Inactive: Tina Teacher' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Tina Teacher is now inactive/)).toBeInTheDocument();
+  });
+
+  it('switches an inactive person back on with a reason', async () => {
+    const { api } = open();
+    await screen.findByText('Gus Gone');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Inactive: Gus Gone' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Make Gus Gone active again' });
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Came back');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Make active' }));
+
+    await waitFor(() => expect(api.callsTo('PUT /users/:email/active')).toHaveLength(1));
+    expect(api.callsTo('PUT /users/:email/active')[0]?.body).toEqual({
+      active: true,
+      reason: 'Came back',
+    });
+    await waitFor(() => expect(card('Gus Gone')).not.toHaveClass('is-inactive'));
+  });
+
+  it('sends nothing when the dialog is cancelled or closed with Escape', async () => {
+    const { api } = open();
+    await screen.findByText('Tina Teacher');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Active: Tina Teacher' }));
+    await userEvent.type(await screen.findByLabelText('Reason'), 'not sure');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Active: Tina Teacher' }));
+    await screen.findByRole('dialog');
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    expect(api.callsTo('PUT /users/:email/active')).toHaveLength(0);
+    expect(card('Tina Teacher')).not.toHaveClass('is-inactive');
+  });
+
+  it('refuses a reason that is too long without asking the server', async () => {
+    const { api } = open();
+    await screen.findByText('Tina Teacher');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Active: Tina Teacher' }));
+    const reason = await screen.findByLabelText('Reason');
+    await userEvent.click(reason);
+    await userEvent.paste('x'.repeat(1001));
+    await userEvent.click(screen.getByRole('button', { name: 'Make inactive' }));
+
+    expect(await screen.findByText(/too long/)).toBeInTheDocument();
+    expect(api.callsTo('PUT /users/:email/active')).toHaveLength(0);
+  });
+
+  it('shows what the server said when it refuses, and keeps the dialog open', async () => {
+    const { api } = setup('/admin/staff', {
+      'PUT /users/:email/active': apiError(
+        409,
+        'CONFLICT',
+        'This is the last active super admin, so it cannot be deactivated',
+      ),
+    });
+    await screen.findByText('Tina Teacher');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Active: Tina Teacher' }));
+    await userEvent.type(await screen.findByLabelText('Reason'), 'because');
+    await userEvent.click(screen.getByRole('button', { name: 'Make inactive' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/last active super admin/);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(api.callsTo('PUT /users/:email/active')).toHaveLength(1);
   });
 });

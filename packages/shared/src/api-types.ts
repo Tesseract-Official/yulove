@@ -40,6 +40,28 @@ export interface CreateStaffResponse {
 /** PUT /staff/{email}/batches */
 export type AssignBatchesResponse = CreateStaffResponse;
 
+/** One student in GET /batches/{batchId}/students. */
+export interface StudentSummary {
+  email: string;
+  name: string;
+  rollNo: string | undefined;
+  batchId: string | undefined;
+  /** False for a student who has been deactivated. */
+  active: boolean;
+}
+
+/** GET /batches/{batchId}/students */
+export interface StudentListResponse {
+  students: StudentSummary[];
+}
+
+/** PUT /users/{email}/active */
+export interface SetActiveResponse {
+  user: { email: string; name: string; role: Role; active: boolean };
+  /** False when the person was already in that state (nothing was recorded). */
+  changed: boolean;
+}
+
 /** POST /batches (201) */
 export interface CreateBatchResponse {
   batch: { batchId: string; name: string };
