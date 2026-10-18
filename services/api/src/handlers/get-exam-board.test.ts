@@ -1,3 +1,4 @@
+import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { FakeDb } from '@yulove/shared/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { invoke, makeEvent, userOf } from '../test-utils/events.js';
@@ -150,5 +151,44 @@ describe('GET /exams/{id}/answers', () => {
       );
       expect((await call('gone@college.edu')).status).toBe(403);
     });
+  });
+});
+
+describe('GET /exams/{id}/answers: how the answers are read', () => {
+  const answerQueries = () =>
+    db
+      .commandCalls(QueryCommand)
+      .map((c) => c.input as { TableName: string; IndexName?: string })
+      .filter((input) => input.TableName === 'Answers');
+
+  it('reads every answer of the exam with one query on the byExam index, not one per student', async () => {
+    for (const email of ['s1@college.edu', 's2@college.edu', 's3@college.edu']) {
+      db.put('Answers', answerItem(email, 1));
+      db.put('Answers', answerItem(email, 2));
+    }
+
+    const { status, body } = await call(MANAGER);
+
+    expect(status).toBe(200);
+    expect(answerQueries()).toEqual([expect.objectContaining({ IndexName: 'byExam' })]);
+    expect(body.counts).toEqual({ GRADED: 6 });
+  });
+
+  it('gives each student only their own answers', async () => {
+    db.put('Answers', answerItem('s2@college.edu', 1, { testsPassed: 10 }));
+
+    const { body } = await call(MANAGER);
+    const [s1, s2] = body.students;
+
+    expect(s1.questions[0]).toMatchObject({ status: 'NOT_SUBMITTED', score: 0 });
+    expect(s2.questions[0]).toMatchObject({ status: 'GRADED', score: 10 });
+  });
+
+  it('does not see an answer that was never indexed (the backfill script adds the keys)', async () => {
+    db.put('Answers', answerItem('s1@college.edu', 1), { unindexed: true });
+
+    const { body } = await call(MANAGER);
+
+    expect(body.students[0].questions[0].status).toBe('NOT_SUBMITTED');
   });
 });

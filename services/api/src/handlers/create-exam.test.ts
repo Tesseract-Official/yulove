@@ -1,4 +1,4 @@
-import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import type { ExamItem, ExamStudentItem } from '@yulove/shared';
 import { FakeDb } from '@yulove/shared/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -78,7 +78,7 @@ describe('POST /exams: the students of the batch', () => {
     expect(created).not.toContain(TEACHER);
   });
 
-  it('writes the rows in batches of 25, not one by one', async () => {
+  it('writes the rows with PutItem, at most 25 at a time, and never with BatchWriteItem', async () => {
     for (let i = 10; i < 70; i += 1) {
       db.addUser(
         userOf('STUDENT', { email: `bulk${i}@college.edu`, batchId: 'A', rollNo: `B${i}` }),
@@ -89,14 +89,10 @@ describe('POST /exams: the students of the batch', () => {
 
     expect(body.studentRows).toEqual({ created: 63, pending: 0 });
     expect(rows()).toHaveLength(63);
-    const batches = db.commandCalls(BatchWriteCommand);
-    expect(batches).toHaveLength(3); // 25 + 25 + 13
-    const sizes = batches.map(
-      (c) =>
-        Object.values((c.input as { RequestItems: Record<string, unknown[]> }).RequestItems)[0]
-          ?.length,
-    );
-    expect(sizes).toEqual([25, 25, 13]);
+    const studentPuts = db
+      .commandCalls(PutCommand)
+      .filter((c) => (c.input as { TableName: string }).TableName === 'ExamStudents');
+    expect(studentPuts).toHaveLength(63);
   });
 
   it('creates no rows for a batch with no students', async () => {
@@ -106,11 +102,15 @@ describe('POST /exams: the students of the batch', () => {
 
     expect(status).toBe(201);
     expect(body.studentRows).toEqual({ created: 0, pending: 0 });
-    expect(db.commandCalls(BatchWriteCommand)).toHaveLength(0);
+    expect(
+      db
+        .commandCalls(PutCommand)
+        .filter((c) => (c.input as { TableName: string }).TableName === 'ExamStudents'),
+    ).toHaveLength(0);
   });
 
   it('still creates the exam when the rows cannot be written (they are made on first access)', async () => {
-    db.batchWriteMode = 'throw';
+    db.failPuts.add('ExamStudents');
 
     const { status, body } = await call(TEACHER, examRequest());
 

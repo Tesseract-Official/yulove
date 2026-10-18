@@ -158,6 +158,20 @@ describe('POST /answers/submit', () => {
         failDetail: 'Could not queue the answer, submit again',
       });
     });
+
+    it('counts one FailedToGrade metric for it', async () => {
+      sqs.on(SendMessageCommand).rejects(new Error('queue down'));
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+      await call(MANAGER);
+
+      const lines = log.mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
+      expect(lines).toEqual([
+        expect.objectContaining({ FailedToGrade: 1, reason: 'WORKER_ERROR' }),
+      ]);
+      log.mockRestore();
+    });
   });
 
   describe('is refused', () => {

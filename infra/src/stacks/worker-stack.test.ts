@@ -140,7 +140,7 @@ describe('WorkerStack: the task', () => {
   });
 
   it('logs to CloudWatch, and keeps the logs if the stack is deleted', () => {
-    template.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 90 });
+    template.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 30 });
     for (const group of Object.values(template.findResources('AWS::Logs::LogGroup'))) {
       expect(group.DeletionPolicy).toBe('Retain');
     }

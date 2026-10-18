@@ -68,7 +68,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 | Execution | Node.js 22 service in JavaScript, ECS Fargate, 1 task, public subnet with a public IP, scales to zero | Also runs reference solutions during question setup |
 | Storage | DynamoDB (on-demand) + one S3 bucket | No other database |
 | Exam PDF | Lambda with a PDF library (e.g. PDFKit) | Stored in S3, downloaded through a presigned link |
-| Monitoring | CloudWatch logs and two alarms | Oldest-message age on each queue; count of `FAILED_TO_GRADE` per hour |
+| Monitoring | CloudWatch logs (kept 30 days) and alarms that email the founders through an SNS topic | Oldest-message age on each queue; count of `FAILED_TO_GRADE` per hour; Lambda errors; plus the worker's two scaling alarms |
 
 **Changed from the sketch:** EC2 is now ECS Fargate; EventBridge is dropped; test-case JSON lives per question, not next to each image; a results queue sits between the worker and the Record Lambda as before.
 
@@ -160,11 +160,12 @@ Eight DynamoDB tables (one per entity, simpler for two people than single-table 
 | Questions | questionId / version | teacherEmail, title, statement, constraints, examples, signature, targetComplexity, timeLimitMs, memoryMb, compareMode, testStatus, testCount, testsKey | byTeacher: teacherEmail |
 | Exams | examId | batchId, title, date, questions [number, questionId, version, marks], status (DRAFT, READY, PUBLISHED), pdfKey, publishedBy, publishedAt | byBatch: batchId |
 | ExamStudents | examId / studentEmail | absent, totalScore, maxScore | byStudent: studentEmail |
-| Answers | examId#studentEmail / questionNumber | imageKey, attempt, status, failReason, language, rawTranscription, correctedCode, fixes, estimatedComplexity, meetsComplexity, testsPassed, testsTotal, verdicts, score, override | — |
+| Answers | examId#studentEmail / questionNumber | imageKey, attempt, status, failReason, language, rawTranscription, correctedCode, fixes, estimatedComplexity, meetsComplexity, testsPassed, testsTotal, verdicts, score, override | byExam: examId + studentEmail#questionNumber |
 | Appeals | appealId | examId, studentEmail, questionNumber, message, status (OPEN, RERUN, CLOSED), handledBy, note | byExam: examId + status |
 | AuditLog | entityKey / timestamp | actor, action, before, after, reason; for super admin requests also method, path, targetIds, statusCode, outcome | byActor: actor |
 
 - `verdicts` holds one verdict per test. For small failed tests it also keeps the input, expected output and student output, each cut to 200 characters; large tests keep only the verdict. This stays well under DynamoDB's 400 KB item limit.
+- `byExam` on Answers lists a whole exam with one paginated query (the status board, results and publish use it). It carries only status, failure, test counts, score and override, not transcriptions or verdicts. Every answer gets its `examId`, `studentEmail` and `examSort` (`studentEmail#questionNumber`) when it is created.
 - Displayed score = `override.score` if an override exists, otherwise `score`.
 - Score formula: `(testsPassed ÷ testsTotal) × marks`, or 0 when `meetsComplexity` is false or the status is `FAILED_TO_GRADE`. Scores are rounded to 2 decimal places. Absent students score 0 on every question and show "Absent".
 

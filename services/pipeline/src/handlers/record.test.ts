@@ -206,6 +206,16 @@ describe('an ANSWER result', () => {
       expect(totals()).toMatchObject({ totalScore: 0 });
     });
 
+    it('counts one FailedToGrade metric for the failure', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      await run(answerFailed('WORKER_ERROR', 'sandbox crashed'));
+      const lines = log.mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
+      expect(lines).toEqual([
+        expect.objectContaining({ FailedToGrade: 1, reason: 'WORKER_ERROR' }),
+      ]);
+      log.mockRestore();
+    });
+
     it('works without a detail', async () => {
       await run(answerFailed('WORKER_ERROR'));
       expect(stored()).toMatchObject({ status: 'FAILED_TO_GRADE', failReason: 'WORKER_ERROR' });
@@ -214,6 +224,14 @@ describe('an ANSWER result', () => {
   });
 
   describe('stale and duplicate results', () => {
+    it('counts no FailedToGrade metric when a failure arrives for an older attempt', async () => {
+      db.put('Answers', answer({ attempt: 2, status: 'RUNNING' }));
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      expect(await run(answerFailed('WORKER_ERROR', 'late', 1))).toEqual({ outcome: 'stale' });
+      expect(log).not.toHaveBeenCalled();
+      log.mockRestore();
+    });
+
     it('ignores a result for an older attempt and writes nothing', async () => {
       db.put('Answers', answer({ attempt: 2, status: 'RUNNING' }));
 

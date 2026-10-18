@@ -23,6 +23,25 @@ export const TABLE_ENV: Record<TableName, string> = {
   AuditLog: 'AUDIT_LOG_TABLE',
 };
 
+/**
+ * The Answers index that lists a whole exam in one query: partition `examId`, sort
+ * `examSort` (`${studentEmail}#${questionNumber}`). It carries only what the status board, the
+ * results and publish need, so a page of it never drags in transcriptions or verdict lists.
+ */
+export const ANSWERS_BY_EXAM_INDEX = 'byExam';
+export const ANSWERS_BY_EXAM_ATTRIBUTES = [
+  'studentEmail',
+  'attempt',
+  'status',
+  'failReason',
+  'failDetail',
+  'testsPassed',
+  'testsTotal',
+  'meetsComplexity',
+  'score',
+  'override',
+] as const;
+
 export const QUEUE_NAMES = ['transcribe', 'execute', 'results'] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 

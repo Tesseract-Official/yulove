@@ -2,6 +2,8 @@ node_modules/
 dist/
 build/
 cdk.out/
+# CDK lookups cached on this machine (they include the AWS account id)
+infra/cdk.context.json
 coverage/
 *.tsbuildinfo
 

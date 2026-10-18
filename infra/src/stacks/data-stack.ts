@@ -2,7 +2,12 @@ import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-
 import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
-import { TABLE_NAMES, type TableName } from '@yulove/shared';
+import {
+  ANSWERS_BY_EXAM_ATTRIBUTES,
+  ANSWERS_BY_EXAM_INDEX,
+  TABLE_NAMES,
+  type TableName,
+} from '@yulove/shared';
 import type { Construct } from 'constructs';
 
 export { TABLE_NAMES, type TableName };
@@ -22,6 +27,8 @@ interface IndexDef {
   name: string;
   partitionKey: KeyDef;
   sortKey?: KeyDef;
+  /** Project only these attributes (plus the keys); the default is every attribute. */
+  attributes?: readonly string[];
 }
 
 interface TableDef {
@@ -63,6 +70,16 @@ const TABLE_DEFS: Record<TableName, TableDef> = {
     // Partition key value is `${examId}#${studentEmail}`.
     partitionKey: { name: 'examStudent', type: S },
     sortKey: { name: 'questionNumber', type: N },
+    // A whole exam in one query: sort key `${studentEmail}#${questionNumber}`. It carries only what
+    // the status board, the results and publish need, never the transcriptions or verdicts.
+    indexes: [
+      {
+        name: ANSWERS_BY_EXAM_INDEX,
+        partitionKey: { name: 'examId', type: S },
+        sortKey: { name: 'examSort', type: S },
+        attributes: ANSWERS_BY_EXAM_ATTRIBUTES,
+      },
+    ],
   },
   Appeals: {
     partitionKey: { name: 'appealId', type: S },
@@ -104,7 +121,9 @@ export class DataStack extends Stack {
           indexName: index.name,
           partitionKey: index.partitionKey,
           sortKey: index.sortKey,
-          projectionType: ProjectionType.ALL,
+          ...(index.attributes
+            ? { projectionType: ProjectionType.INCLUDE, nonKeyAttributes: [...index.attributes] }
+            : { projectionType: ProjectionType.ALL }),
         });
       }
       new CfnOutput(this, `${name}TableName`, { value: table.tableName });
@@ -120,9 +139,10 @@ export class DataStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
       cors: [
         {
-          allowedMethods: [HttpMethods.PUT, HttpMethods.POST],
+          // Photos go up with a presigned POST (web/src/imaging/upload.ts); nothing uses PUT.
+          allowedMethods: [HttpMethods.POST],
           allowedOrigins: props.webOrigins,
-          allowedHeaders: ['*'],
+          allowedHeaders: ['content-type'],
           maxAge: Duration.hours(1).toSeconds(),
         },
       ],

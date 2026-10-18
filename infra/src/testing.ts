@@ -6,6 +6,7 @@ import { ApiStack } from './stacks/api-stack.js';
 import { AuthStack } from './stacks/auth-stack.js';
 import { BudgetStack } from './stacks/budget-stack.js';
 import { DataStack } from './stacks/data-stack.js';
+import { MonitoringStack } from './stacks/monitoring-stack.js';
 import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
 import { WorkerStack } from './stacks/worker-stack.js';
@@ -22,7 +23,7 @@ export const TEST_CONTEXT = {
 /** Builds the stacks the way app.ts does, without running esbuild. */
 export function buildApp(
   context: Record<string, string | string[]> = TEST_CONTEXT,
-  options: { routes?: boolean; worker?: boolean; budget?: boolean } = {},
+  options: { routes?: boolean; worker?: boolean; budget?: boolean; monitoring?: boolean } = {},
 ) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
   const {
@@ -73,6 +74,14 @@ export function buildApp(
 
   const budget = options.budget ? new BudgetStack(app, 'Budget', { env, budgetEmail }) : undefined;
 
+  const monitoring = options.monitoring
+    ? new MonitoringStack(app, 'Monitoring', {
+        env,
+        queues: queues.queues,
+        alertEmail: budgetEmail,
+      })
+    : undefined;
+
   // Synthesising the worker stages its Docker build context, so tests ask for it explicitly.
   const worker = options.worker
     ? new WorkerStack(app, 'Worker', {
@@ -91,6 +100,7 @@ export function buildApp(
     pipeline,
     worker,
     budget,
+    monitoring,
     api,
     // Lazy: synthesising freezes a stack, so routes must be added before the first access.
     templates: {

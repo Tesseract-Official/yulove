@@ -189,6 +189,16 @@ describe('a valid answer', () => {
 });
 
 describe('answers that cannot be graded', () => {
+  it('count one FailedToGrade metric each', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await handlerFor(
+      new Scripted([goodReply({ readable: false, correctedCode: '', driverCode: '' })]),
+    )(event());
+    const lines = log.mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
+    expect(lines).toEqual([expect.objectContaining({ FailedToGrade: 1, reason: 'UNREADABLE' })]);
+    log.mockRestore();
+  });
+
   const failed = (failReason: string, detail?: RegExp | string) => {
     expect(answer()).toMatchObject({ attempt: 1, status: 'FAILED_TO_GRADE', failReason });
     if (detail) expect(answer()?.failDetail).toMatch(detail);

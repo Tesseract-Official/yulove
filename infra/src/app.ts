@@ -5,6 +5,7 @@ import { ApiStack } from './stacks/api-stack.js';
 import { AuthStack } from './stacks/auth-stack.js';
 import { BudgetStack } from './stacks/budget-stack.js';
 import { DataStack } from './stacks/data-stack.js';
+import { MonitoringStack } from './stacks/monitoring-stack.js';
 import { PipelineStack } from './stacks/pipeline-stack.js';
 import { QueueStack } from './stacks/queue-stack.js';
 import { WorkerStack } from './stacks/worker-stack.js';
@@ -33,6 +34,13 @@ const auth = new AuthStack(app, 'DsaJudgeAuth', {
 const queues = new QueueStack(app, 'DsaJudgeQueues', { env });
 
 new BudgetStack(app, 'DsaJudgeBudget', { env, budgetEmail });
+
+// Alarms email the same address as the budget alerts.
+new MonitoringStack(app, 'DsaJudgeMonitoring', {
+  env,
+  queues: queues.queues,
+  alertEmail: budgetEmail,
+});
 
 new WorkerStack(app, 'DsaJudgeWorker', {
   env,

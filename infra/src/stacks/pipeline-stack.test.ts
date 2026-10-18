@@ -122,6 +122,11 @@ describe('PipelineStack: test-generation Lambda', () => {
     );
   });
 
+  it('cannot delete or batch-write anything in DynamoDB', () => {
+    const actions = withPrefix(statements(), 'dynamodb:').flatMap(actionsOf);
+    expect(actions.filter((a) => /Delete|BatchWrite/.test(a))).toEqual([]);
+  });
+
   it('can get and put objects under questions/* only', () => {
     const s3 = withPrefix(statements(), 's3:');
     expect(s3).toHaveLength(1);
@@ -148,7 +153,7 @@ describe('PipelineStack: test-generation Lambda', () => {
       statements()
         .map((s) => actionsOf(s)[0]?.split(':')[0])
         .sort(),
-    ).toEqual(['dynamodb', 'dynamodb', 's3', 'secretsmanager', 'sqs']);
+    ).toEqual(['dynamodb', 'dynamodb', 'dynamodb', 's3', 'secretsmanager', 'sqs']);
   });
 });
 

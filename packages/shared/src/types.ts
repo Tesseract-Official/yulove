@@ -146,6 +146,10 @@ export interface Override {
 export interface AnswerItem {
   examStudent: string;
   questionNumber: number;
+  /** Index keys of `byExam`, set when an attempt begins (see answerIndexKeys). */
+  examId?: string;
+  studentEmail?: string;
+  examSort?: string;
   imageKey?: string;
   attempt: number;
   status: AnswerStatus;
@@ -234,3 +238,38 @@ export interface ApiErrorBody {
 export function examStudentKey(examId: string, studentEmail: string): string {
   return `${examId}#${normaliseEmail(studentEmail)}`;
 }
+
+/** Splits an Answers partition key back into its exam and student; undefined if it has no `#`. */
+export function parseExamStudentKey(
+  examStudent: string,
+): { examId: string; studentEmail: string } | undefined {
+  const at = examStudent.indexOf('#');
+  if (at < 1 || at === examStudent.length - 1) return undefined;
+  return { examId: examStudent.slice(0, at), studentEmail: examStudent.slice(at + 1) };
+}
+
+/** The attributes the Answers `byExam` index is built from. Without them an item is not indexed. */
+export function answerIndexKeys(
+  examId: string,
+  studentEmail: string,
+  questionNumber: number,
+): { examId: string; studentEmail: string; examSort: string } {
+  const email = normaliseEmail(studentEmail);
+  return { examId, studentEmail: email, examSort: `${email}#${questionNumber}` };
+}
+
+/** One answer as the `byExam` index returns it: enough for the board, results and totals. */
+export type ExamAnswerSummary = Pick<
+  AnswerItem,
+  | 'examStudent'
+  | 'questionNumber'
+  | 'attempt'
+  | 'status'
+  | 'failReason'
+  | 'failDetail'
+  | 'testsPassed'
+  | 'testsTotal'
+  | 'meetsComplexity'
+  | 'score'
+  | 'override'
+> & { studentEmail: string };

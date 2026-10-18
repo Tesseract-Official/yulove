@@ -11,6 +11,7 @@ import type { Construct } from 'constructs';
 import { serviceEntry } from '../lib/handler-paths.js';
 import { createNodeFunction } from '../lib/node-function.js';
 import { grantObjects } from '../lib/s3-grants.js';
+import { grantTable } from '../lib/table-grants.js';
 import { GEMINI_SECRET_NAME } from './data-stack.js';
 
 /** Most transcriptions that run at the same time. */
@@ -76,7 +77,7 @@ export class PipelineStack extends Stack {
 
     // Exactly what the Lambda needs, and nothing else.
     props.geminiApiKeySecret.grantRead(this.testGenerationFunction);
-    props.questionsTable.grantReadWriteData(this.testGenerationFunction);
+    grantTable(this.testGenerationFunction, props.questionsTable, 'readWrite');
     grantObjects(this.testGenerationFunction, props.bucket, 'readWrite', 'questions/*');
     props.executeQueue.grantSendMessages(this.testGenerationFunction);
 

@@ -1,4 +1,5 @@
 import type { ExamItem, ExamStudentItem } from '@yulove/shared';
+import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { FakeDb } from '@yulove/shared/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke, makeEvent } from '../test-utils/events.js';
@@ -159,5 +160,20 @@ describe('POST /exams/{id}/publish', () => {
     it('answers 404 for an unknown exam', async () => {
       expect((await call(MANAGER, undefined, 'nope')).status).toBe(404);
     });
+  });
+});
+
+describe('how the answers are read', () => {
+  it('reads every answer of the exam with one query on the byExam index, not one per student', async () => {
+    db.put('Answers', answerItem('s3@college.edu', 1));
+
+    const { status } = await call(MANAGER, { confirm: true });
+
+    expect(status).toBe(200);
+    const answerQueries = db
+      .commandCalls(QueryCommand)
+      .map((c) => c.input as { TableName: string; IndexName?: string })
+      .filter((input) => input.TableName === 'Answers');
+    expect(answerQueries).toEqual([expect.objectContaining({ IndexName: 'byExam' })]);
   });
 });

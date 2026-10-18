@@ -20,7 +20,10 @@
     "seed:dev-questions": "pnpm --filter @yulove/scripts seed:dev-questions",
     "e2e:pipeline": "pnpm --filter @yulove/scripts e2e:pipeline",
     "web:env": "pnpm --filter @yulove/scripts web:env",
-    "web:vercel-env": "pnpm --filter @yulove/scripts web:vercel-env"
+    "web:vercel-env": "pnpm --filter @yulove/scripts web:vercel-env",
+    "backfill:answers-exam-index": "pnpm --filter @yulove/scripts backfill:answers-exam-index",
+    "ecr:lifecycle": "pnpm --filter @yulove/scripts ecr:lifecycle",
+    "logs:retention": "pnpm --filter @yulove/scripts logs:retention"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

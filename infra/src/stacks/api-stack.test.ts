@@ -18,6 +18,21 @@ describe('ApiStack without routes', () => {
     });
   });
 
+  it('allows only the methods the API uses: no DELETE', () => {
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({
+        AllowMethods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+        AllowHeaders: ['authorization', 'content-type'],
+      }),
+    });
+  });
+
+  it('throttles every route, so a flood is turned away before it reaches the Lambdas', () => {
+    template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      DefaultRouteSettings: { ThrottlingRateLimit: 50, ThrottlingBurstLimit: 100 },
+    });
+  });
+
   it('outputs its URL for the web app config', () => {
     expect(Object.keys(template.findOutputs('ApiUrl'))).toEqual(['ApiUrl']);
   });
@@ -64,6 +79,7 @@ describe('ApiStack.addRoute', () => {
       tables: { Answers: 'readWrite', Users: 'read' },
       queues: { transcribe: 'send' },
       bucket: 'read',
+      bucketPrefix: 'answers/*',
     });
     const template = templates.api;
 
@@ -105,6 +121,48 @@ describe('ApiStack.addRoute', () => {
     expect(Object.keys(vars).filter((k) => /TABLE|QUEUE|BUCKET/.test(k))).toEqual([
       'AUDIT_LOG_TABLE',
     ]);
+  });
+});
+
+describe('ApiStack.addRoute: table access levels never delete', () => {
+  const actionsFor = (access: 'read' | 'write' | 'readWrite'): string[] => {
+    const { api, templates } = buildApp();
+    api.addRoute(HttpMethod.POST, '/x', ENTRY, { tables: { Exams: access } });
+    return Object.values(templates.api.findResources('AWS::IAM::Policy'))
+      .flatMap(
+        (p) =>
+          p.Properties.PolicyDocument.Statement as Array<{
+            Action: string | string[];
+            Resource: unknown;
+          }>,
+      )
+      .filter((s) => JSON.stringify(s.Resource).includes('ExamsTable'))
+      .flatMap((s) => (Array.isArray(s.Action) ? s.Action : [s.Action]));
+  };
+
+  it('read can read and cannot write', () => {
+    const actions = actionsFor('read');
+    expect(actions).toEqual(expect.arrayContaining(['dynamodb:GetItem', 'dynamodb:Query']));
+    expect(actions.filter((a) => /Put|Update|Delete|BatchWrite/.test(a))).toEqual([]);
+  });
+
+  it('write can put and update items and nothing else', () => {
+    expect(actionsFor('write').sort()).toEqual(['dynamodb:PutItem', 'dynamodb:UpdateItem']);
+  });
+
+  it('readWrite is read plus write, and still cannot delete or batch-write', () => {
+    const actions = actionsFor('readWrite');
+    expect(actions).toEqual(
+      expect.arrayContaining(['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem']),
+    );
+    expect(actions.filter((a) => /Delete|BatchWrite/.test(a))).toEqual([]);
+  });
+
+  it('refuses bucket access without a key pattern, which would include delete and listing', () => {
+    const { api } = buildApp();
+    expect(() => api.addRoute(HttpMethod.POST, '/y', ENTRY, { bucket: 'read' })).toThrow(
+      /bucketPrefix/,
+    );
   });
 });
 

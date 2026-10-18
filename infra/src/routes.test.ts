@@ -437,3 +437,42 @@ describe('registered routes', () => {
     });
   });
 });
+
+describe('no route can delete', () => {
+  const policies = Object.values(template.findResources('AWS::IAM::Policy'));
+
+  it('has no DynamoDB delete or batch-write action in any route policy', () => {
+    const actions = policies.flatMap((p) =>
+      (p.Properties.PolicyDocument.Statement as Statement[]).flatMap(actionsOf),
+    );
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.filter((a) => /dynamodb:(Delete|BatchWrite|TransactWrite)/.test(a))).toEqual([]);
+  });
+
+  it('has no S3 delete action and no bucket-wide object grant in any route policy', () => {
+    const statements = policies.flatMap(
+      (p) => p.Properties.PolicyDocument.Statement as Statement[],
+    );
+    expect(
+      statements.flatMap(actionsOf).filter((a) => /^s3:(Delete|PutBucket|\*)/.test(a)),
+    ).toEqual([]);
+    // Reading and writing objects is always limited to one folder of the bucket. Only listing
+    // (so a missing file is "not found") is on the bucket itself.
+    for (const s of statements.filter((st) =>
+      actionsOf(st).some((a) => /^s3:(Get|Put)Object/.test(a)),
+    )) {
+      expect(JSON.stringify(s.Resource)).toMatch(/\/(answers|questions|exams)\/\*/);
+    }
+    for (const s of statements.filter((st) => actionsOf(st).includes('s3:ListBucket'))) {
+      expect(actionsOf(s)).toEqual(['s3:ListBucket']);
+    }
+  });
+
+  it('never gives a route a wildcard resource', () => {
+    for (const p of policies) {
+      for (const s of p.Properties.PolicyDocument.Statement as Statement[]) {
+        expect(JSON.stringify(s.Resource)).not.toBe('"*"');
+      }
+    }
+  });
+});

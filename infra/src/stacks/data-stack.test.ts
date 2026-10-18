@@ -10,7 +10,7 @@ interface Key {
 interface ExpectedTable {
   pk: Key;
   sk?: Key;
-  gsis: Record<string, { pk: Key; sk?: Key }>;
+  gsis: Record<string, { pk: Key; sk?: Key; include?: string[] }>;
 }
 
 const S = (name: string): Key => ({ name, type: 'S' });
@@ -34,7 +34,29 @@ const EXPECTED: Record<string, ExpectedTable> = {
     sk: S('studentEmail'),
     gsis: { byStudent: { pk: S('studentEmail') } },
   },
-  Answers: { pk: S('examStudent'), sk: N('questionNumber'), gsis: {} },
+  Answers: {
+    pk: S('examStudent'),
+    sk: N('questionNumber'),
+    // A whole exam in one query; it carries what the board and totals need, not the transcriptions.
+    gsis: {
+      byExam: {
+        pk: S('examId'),
+        sk: S('examSort'),
+        include: [
+          'studentEmail',
+          'attempt',
+          'status',
+          'failReason',
+          'failDetail',
+          'testsPassed',
+          'testsTotal',
+          'meetsComplexity',
+          'score',
+          'override',
+        ],
+      },
+    },
+  },
   Appeals: {
     pk: S('appealId'),
     gsis: { byExam: { pk: S('examId'), sk: S('status') } },
@@ -59,7 +81,7 @@ function tableProps(logicalName: string) {
     GlobalSecondaryIndexes?: {
       IndexName: string;
       KeySchema: { AttributeName: string; KeyType: string }[];
-      Projection: { ProjectionType: string };
+      Projection: { ProjectionType: string; NonKeyAttributes?: string[] };
     }[];
     BillingMode: string;
     PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: boolean };
@@ -101,7 +123,18 @@ describe('DataStack tables', () => {
         ]);
         expect(typeOf(want.pk.name)).toBe(want.pk.type);
         if (want.sk) expect(typeOf(want.sk.name)).toBe(want.sk.type);
-        expect(gsi.Projection.ProjectionType).toBe('ALL');
+        if (want.include) {
+          expect(gsi.Projection.ProjectionType).toBe('INCLUDE');
+          expect([...(gsi.Projection.NonKeyAttributes ?? [])].sort()).toEqual(
+            [...want.include].sort(),
+          );
+          // Nothing heavy rides along in the index.
+          for (const heavy of ['rawTranscription', 'correctedCode', 'driverCode', 'verdicts']) {
+            expect(gsi.Projection.NonKeyAttributes).not.toContain(heavy);
+          }
+        } else {
+          expect(gsi.Projection.ProjectionType).toBe('ALL');
+        }
       }
     });
 
@@ -145,13 +178,14 @@ describe('DataStack bucket', () => {
     });
   });
 
-  it('allows PUT and POST from the web origin only', () => {
+  it('allows only POST (the presigned upload) from the web origin only, and no wildcard header', () => {
     template.hasResourceProperties('AWS::S3::Bucket', {
       CorsConfiguration: {
         CorsRules: [
           Match.objectLike({
-            AllowedMethods: ['PUT', 'POST'],
+            AllowedMethods: ['POST'],
             AllowedOrigins: ['https://app.college.edu'],
+            AllowedHeaders: ['content-type'],
           }),
         ],
       },

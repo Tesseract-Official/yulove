@@ -8,6 +8,7 @@ export * from './errors.js';
 export * from './concurrency.js';
 export * from './identity.js';
 export * from './messages.js';
+export * from './metrics.js';
 export * from './questions.js';
 export * from './schemas.js';
 export * from './scoring.js';

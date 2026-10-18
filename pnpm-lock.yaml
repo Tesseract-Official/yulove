@@ -85,7 +85,13 @@ importers:
       '@aws-sdk/client-cloudformation':
         specifier: ^3.1152.0
         version: 3.1152.0
+      '@aws-sdk/client-cloudwatch-logs':
+        specifier: ^3.1152.0
+        version: 3.1152.0
       '@aws-sdk/client-dynamodb':
+        specifier: ^3.1152.0
+        version: 3.1152.0
+      '@aws-sdk/client-ecr':
         specifier: ^3.1152.0
         version: 3.1152.0
       '@aws-sdk/client-lambda':
@@ -305,8 +311,16 @@ packages:
     resolution: {integrity: sha512-Y0vfmEfjoY4Ufo9jx3bIRPH5+4v9N0+Re9Ti7xutufSzt58awStFt2QpCBulTYA5ZQF0FU2BY7HPJgN1d55cdw==}
     engines: {node: '>=20.0.0'}
 
+  '@aws-sdk/client-cloudwatch-logs@3.1152.0':
+    resolution: {integrity: sha512-626LS/9YffzAUH68bvnyNwXo/WYtShhs7+X6kEH5ARTom1sSk3hHJmR9F+1zc50mHSfJNwYEbUNDmgC5vW4/Xg==}
+    engines: {node: '>=20.0.0'}
+
   '@aws-sdk/client-dynamodb@3.1152.0':
     resolution: {integrity: sha512-Dr3jy9vbi8ay9C9NBF508KYTYQyKOveBrY776M6tcJxz1rtDx58wgmUpbDJtVcTdrZEextPTQPdfkHEEUdjBeg==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-ecr@3.1152.0':
+    resolution: {integrity: sha512-Wcy+ne9ALPpqXzBxqaYdyGMXyN2WZT30dqdkjwrSbjEmmtuvMGkgOxA24+x6apuh13qP3FF3NeboX0RnAVIowg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-lambda@3.1152.0':
@@ -2306,12 +2320,34 @@ snapshots:
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
+  '@aws-sdk/client-cloudwatch-logs@3.1152.0':
+    dependencies:
+      '@aws-sdk/core': 3.978.3
+      '@aws-sdk/credential-provider-node': 3.972.86
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.36.0
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.12.1
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
   '@aws-sdk/client-dynamodb@3.1152.0':
     dependencies:
       '@aws-sdk/core': 3.978.3
       '@aws-sdk/credential-provider-node': 3.972.86
       '@aws-sdk/dynamodb-codec': 3.973.48
       '@aws-sdk/middleware-endpoint-discovery': 3.972.32
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.36.0
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.12.1
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/client-ecr@3.1152.0':
+    dependencies:
+      '@aws-sdk/core': 3.978.3
+      '@aws-sdk/credential-provider-node': 3.972.86
       '@aws-sdk/types': 3.974.6
       '@smithy/core': 3.36.0
       '@smithy/fetch-http-handler': 5.8.0

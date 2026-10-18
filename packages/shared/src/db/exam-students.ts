@@ -1,4 +1,5 @@
-import { BatchWriteCommand, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { mapLimit } from '../concurrency.js';
 import type { ExamStudentItem } from '../types.js';
 import { docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
 import { normaliseEmail } from '../identity.js';
@@ -18,8 +19,18 @@ export async function getExamStudent(
   return out.Item as ExamStudentItem | undefined;
 }
 
-const BATCH_SIZE = 25; // DynamoDB's limit for one BatchWriteItem
-const MAX_BATCH_ATTEMPTS = 6;
+/** Rows written at the same time. */
+const WRITE_CONCURRENCY = 25;
+const MAX_ATTEMPTS = 6;
+
+/** Errors DynamoDB gives when it is busy; a row hitting one is tried again after a pause. */
+const BUSY_ERRORS = new Set([
+  'ProvisionedThroughputExceededException',
+  'ThrottlingException',
+  'RequestLimitExceeded',
+  'InternalServerError',
+  'ServiceUnavailable',
+]);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -35,9 +46,10 @@ export interface PutExamStudentsResult {
 }
 
 /**
- * Writes many rows with BatchWriteItem, 25 at a time. Rows DynamoDB returns as unprocessed are
- * retried with a growing pause; whatever is still unprocessed after that comes back in
- * `unwritten`. A row for the same student given twice is written once. Real errors are thrown.
+ * Writes many rows with PutItem, 25 at a time (BatchWriteItem would also let a caller delete, which
+ * no route may do). A row that meets a "busy" error is retried with a growing pause; whatever is
+ * still refused after that comes back in `unwritten`. A row for the same student given twice is
+ * written once. Any other error is thrown.
  */
 export async function putExamStudents(
   items: readonly ExamStudentItem[],
@@ -48,27 +60,22 @@ export async function putExamStudents(
     (i) => ({ ...i, studentEmail: normaliseEmail(i.studentEmail) }),
   );
 
-  let written = 0;
-  const unwritten: ExamStudentItem[] = [];
-
-  for (let start = 0; start < unique.length; start += BATCH_SIZE) {
-    let pending = unique.slice(start, start + BATCH_SIZE);
-    for (let attempt = 0; attempt < MAX_BATCH_ATTEMPTS && pending.length > 0; attempt += 1) {
+  const putOne = async (Item: ExamStudentItem): Promise<boolean> => {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       if (attempt > 0) await pause(50 * 2 ** attempt);
-      const out = await docClient().send(
-        new BatchWriteCommand({
-          RequestItems: { [table()]: pending.map((Item) => ({ PutRequest: { Item } })) },
-        }),
-      );
-      const left = (out.UnprocessedItems?.[table()] ?? []) as Array<{
-        PutRequest?: { Item: ExamStudentItem };
-      }>;
-      written += pending.length - left.length;
-      pending = left.flatMap((r) => (r.PutRequest ? [r.PutRequest.Item] : []));
+      try {
+        await docClient().send(new PutCommand({ TableName: table(), Item }));
+        return true;
+      } catch (error) {
+        if (!BUSY_ERRORS.has((error as { name?: string } | undefined)?.name ?? '')) throw error;
+      }
     }
-    unwritten.push(...pending);
-  }
-  return { written, unwritten };
+    return false;
+  };
+
+  const done = await mapLimit(unique, WRITE_CONCURRENCY, putOne);
+  const unwritten = unique.filter((_, i) => !done[i]);
+  return { written: unique.length - unwritten.length, unwritten };
 }
 
 /**

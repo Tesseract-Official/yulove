@@ -6,7 +6,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   beginAttempt,
   claimAppeal,
@@ -14,6 +14,7 @@ import {
   countTranscribeTry,
   releaseAppeal,
   getAnswer,
+  listAnswersByExam,
   listAnswersForStudent,
   markFailed,
   recordAnswerResult,
@@ -81,6 +82,27 @@ describe('beginAttempt', () => {
       ':imageKey': 'answers/exam-1/R1/q2.jpg',
     });
     expect(input.ReturnValues).toBe('UPDATED_NEW');
+  });
+
+  it('sets the attributes of the byExam index on every attempt, so no answer is ever unindexed', async () => {
+    ddbMock.on(UpdateCommand).resolves({ Attributes: { attempt: 1 } });
+
+    await beginAttempt(key);
+
+    const input = lastUpdate();
+    expect(input.UpdateExpression).toContain(
+      '#examId = :examId, #studentEmail = :studentEmail, #examSort = :examSort',
+    );
+    expect(input.ExpressionAttributeValues).toMatchObject({
+      ':examId': 'exam-1',
+      ':studentEmail': 'student@college.edu',
+      ':examSort': 'student@college.edu#2',
+    });
+    expect(input.ExpressionAttributeNames).toMatchObject({
+      '#examId': 'examId',
+      '#studentEmail': 'studentEmail',
+      '#examSort': 'examSort',
+    });
   });
 
   it('keeps the stored image on a re-run', async () => {
@@ -334,5 +356,64 @@ describe('the open appeal marker', () => {
 
     ddbMock.on(UpdateCommand).rejects(new Error('throttled'));
     await expect(releaseAppeal(key, 'a1')).rejects.toThrow('throttled');
+  });
+});
+
+describe('listAnswersByExam', () => {
+  it('reads a whole exam with queries on the byExam index, following every page', async () => {
+    ddbMock
+      .on(QueryCommand)
+      .resolvesOnce({
+        Items: [{ questionNumber: 1 }, { questionNumber: 2 }],
+        LastEvaluatedKey: { examStudent: 'a', questionNumber: 2 },
+      })
+      .resolvesOnce({ Items: [{ questionNumber: 3 }] });
+
+    const answers = await listAnswersByExam('exam-1');
+
+    expect(answers).toHaveLength(3);
+    const calls = ddbMock.commandCalls(QueryCommand);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.args[0].input).toEqual({
+      TableName: 'Answers',
+      IndexName: 'byExam',
+      KeyConditionExpression: 'examId = :examId',
+      ExpressionAttributeValues: { ':examId': 'exam-1' },
+    });
+    expect(calls[1]?.args[0].input.ExclusiveStartKey).toEqual({
+      examStudent: 'a',
+      questionNumber: 2,
+    });
+  });
+});
+
+describe('markFailed: the FailedToGrade metric', () => {
+  const lines = () =>
+    vi
+      .mocked(console.log)
+      .mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>);
+
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('counts one FailedToGrade when the failure is written', async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+
+    await expect(markFailed(key, 2, 'UNREADABLE')).resolves.toBe('written');
+
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toMatchObject({ FailedToGrade: 1, reason: 'UNREADABLE' });
+  });
+
+  it('counts nothing when a newer attempt made the write stale', async () => {
+    ddbMock.on(UpdateCommand).rejects(conditionFailed());
+
+    await expect(markFailed(key, 2, 'UNREADABLE')).resolves.toBe('stale');
+
+    expect(lines()).toEqual([]);
   });
 });

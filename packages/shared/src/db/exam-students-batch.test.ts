@@ -1,4 +1,4 @@
-import { DynamoDBDocumentClient, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ExamStudentItem } from '../types.js';
@@ -13,6 +13,8 @@ const rows = (n: number, prefix = 's'): ExamStudentItem[] =>
 
 const noSleep = async () => undefined;
 
+const busy = () => Object.assign(new Error('slow down'), { name: 'ThrottlingException' });
+
 describe('putExamStudents', () => {
   const ddb = mockClient(DynamoDBDocumentClient);
 
@@ -21,28 +23,42 @@ describe('putExamStudents', () => {
     process.env['EXAM_STUDENTS_TABLE'] = 'ExamStudents';
   });
 
-  const requests = () =>
-    ddb
-      .commandCalls(BatchWriteCommand)
-      .map((c) => c.args[0].input.RequestItems?.['ExamStudents'] ?? []);
+  const written = () => ddb.commandCalls(PutCommand).map((c) => c.args[0].input.Item);
 
-  it('writes 25 rows per call', async () => {
-    ddb.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+  it('writes every row with PutItem, never BatchWriteItem', async () => {
+    ddb.on(PutCommand).resolves({});
 
     const result = await putExamStudents(rows(60), { sleepMs: noSleep });
 
-    expect(requests().map((r) => r.length)).toEqual([25, 25, 10]);
+    expect(written()).toHaveLength(60);
+    expect(ddb.commandCalls(PutCommand)[0]?.args[0].input.TableName).toBe('ExamStudents');
     expect(result).toEqual({ written: 60, unwritten: [] });
+  });
+
+  it('writes at most 25 rows at the same time', async () => {
+    let running = 0;
+    let most = 0;
+    ddb.on(PutCommand).callsFake(async () => {
+      running += 1;
+      most = Math.max(most, running);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      running -= 1;
+      return {};
+    });
+
+    await putExamStudents(rows(80), { sleepMs: noSleep });
+
+    expect(most).toBe(25);
   });
 
   it('writes nothing for no rows', async () => {
     const result = await putExamStudents([], { sleepMs: noSleep });
-    expect(ddb.commandCalls(BatchWriteCommand)).toHaveLength(0);
+    expect(ddb.commandCalls(PutCommand)).toHaveLength(0);
     expect(result).toEqual({ written: 0, unwritten: [] });
   });
 
   it('stores emails in lower case and writes a repeated student once', async () => {
-    ddb.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    ddb.on(PutCommand).resolves({});
 
     await putExamStudents(
       [
@@ -52,42 +68,26 @@ describe('putExamStudents', () => {
       { sleepMs: noSleep },
     );
 
-    const [only] = requests();
-    expect(only).toHaveLength(1);
-    expect(only?.[0]).toEqual({
-      PutRequest: { Item: { examId: 'e1', studentEmail: 'same@college.edu', absent: false } },
-    });
+    expect(written()).toEqual([{ examId: 'e1', studentEmail: 'same@college.edu', absent: false }]);
   });
 
-  it('retries rows DynamoDB returns as unprocessed, after a pause that grows', async () => {
+  it('retries a row that meets a busy error, after a pause that grows', async () => {
     const pauses: number[] = [];
-    const first = rows(3);
-    ddb
-      .on(BatchWriteCommand)
-      .resolvesOnce({
-        UnprocessedItems: {
-          ExamStudents: first.slice(1).map((Item) => ({ PutRequest: { Item } })),
-        },
-      })
-      .resolvesOnce({
-        UnprocessedItems: {
-          ExamStudents: first.slice(2).map((Item) => ({ PutRequest: { Item } })),
-        },
-      })
-      .resolves({ UnprocessedItems: {} });
+    ddb.on(PutCommand).rejectsOnce(busy()).rejectsOnce(busy()).resolves({});
 
-    const result = await putExamStudents(first, { sleepMs: async (ms) => void pauses.push(ms) });
+    const result = await putExamStudents(rows(1), { sleepMs: async (ms) => void pauses.push(ms) });
 
-    expect(requests().map((r) => r.length)).toEqual([3, 2, 1]);
-    expect(result).toEqual({ written: 3, unwritten: [] });
+    expect(ddb.commandCalls(PutCommand)).toHaveLength(3);
+    expect(result).toEqual({ written: 1, unwritten: [] });
     expect(pauses).toHaveLength(2);
     expect(pauses[1]).toBeGreaterThan(pauses[0] as number);
   });
 
   it('gives back the rows it could not write after every retry', async () => {
     const all = rows(3);
-    ddb.on(BatchWriteCommand).resolves({
-      UnprocessedItems: { ExamStudents: all.slice(1).map((Item) => ({ PutRequest: { Item } })) },
+    ddb.on(PutCommand).callsFake((input) => {
+      if (input.Item.studentEmail === 's0@college.edu') return {};
+      throw busy();
     });
 
     const result = await putExamStudents(all, { sleepMs: noSleep });
@@ -97,11 +97,12 @@ describe('putExamStudents', () => {
       's1@college.edu',
       's2@college.edu',
     ]);
-    expect(ddb.commandCalls(BatchWriteCommand).length).toBe(6); // gives up after 6 attempts
+    // 1 + 6 + 6 attempts: it gives up on a row after 6.
+    expect(ddb.commandCalls(PutCommand)).toHaveLength(13);
   });
 
-  it('throws real errors', async () => {
-    ddb.on(BatchWriteCommand).rejects(new Error('AccessDenied'));
+  it('throws real errors straight away', async () => {
+    ddb.on(PutCommand).rejects(new Error('AccessDenied'));
     await expect(putExamStudents(rows(2), { sleepMs: noSleep })).rejects.toThrow('AccessDenied');
   });
 });

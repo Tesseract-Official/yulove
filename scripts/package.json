@@ -14,11 +14,16 @@
     "seed:dev-questions": "tsx seed-dev-questions.ts",
     "e2e:pipeline": "tsx e2e-pipeline.ts",
     "web:env": "tsx web-env.ts",
-    "web:vercel-env": "tsx web-vercel-env.ts"
+    "web:vercel-env": "tsx web-vercel-env.ts",
+    "backfill:answers-exam-index": "tsx backfill-answers-exam-index.ts",
+    "ecr:lifecycle": "tsx ecr-lifecycle.ts",
+    "logs:retention": "tsx set-log-retention.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1152.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1152.0",
     "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/client-ecr": "^3.1152.0",
     "@aws-sdk/client-lambda": "^3.1152.0",
     "@aws-sdk/client-s3": "^3.1152.0",
     "@aws-sdk/client-secrets-manager": "^3.1152.0",

@@ -1,6 +1,5 @@
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
-  BatchWriteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -10,7 +9,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import { TABLE_ENV, TABLE_NAMES, type TableName } from '../tables.js';
-import type { BatchItem, UserItem } from '../types.js';
+import { parseExamStudentKey, type BatchItem, type UserItem } from '../types.js';
 
 type Item = Record<string, unknown>;
 
@@ -28,7 +27,7 @@ const DEFS: Record<TableName, TableDef> = {
   Questions: { pk: 'questionId', sk: 'version', indexes: { byTeacher: 'teacherEmail' } },
   Exams: { pk: 'examId', indexes: { byBatch: 'batchId' } },
   ExamStudents: { pk: 'examId', sk: 'studentEmail', indexes: { byStudent: 'studentEmail' } },
-  Answers: { pk: 'examStudent', sk: 'questionNumber' },
+  Answers: { pk: 'examStudent', sk: 'questionNumber', indexes: { byExam: 'examId' } },
   Appeals: { pk: 'appealId', indexes: { byExam: 'examId' } },
   AuditLog: { pk: 'entityKey', sk: 'timestamp', indexes: { byActor: 'actor' } },
 };
@@ -40,7 +39,7 @@ interface ExpressionInput {
 
 /**
  * A small in-memory DynamoDB over all eight tables, for tests. It understands what the shared
- * data-access modules send: Get, Put (with attribute_not_exists), Update (SET, ADD, REMOVE,
+ * data-access modules send: Get, Put (with attribute_not_exists; BatchWriteItem is deliberately not supported), Update (SET, ADD, REMOVE,
  * if_not_exists, and attribute_exists / attribute_not_exists / equality conditions), Query on a
  * table or index (one equality, an optional sort-key equality, Limit, ScanIndexForward) and Scan.
  */
@@ -48,8 +47,8 @@ export class FakeDb {
   private readonly tables = new Map<TableName, Map<string, Item>>();
   private readonly mock = mockClient(DynamoDBDocumentClient);
 
-  /** Make BatchWriteItem fail with an error ('throw') for tests of the failure path. */
-  batchWriteMode: 'ok' | 'throw' = 'ok';
+  /** Tables whose PutItem calls fail with an error, for tests of a failing write. */
+  readonly failPuts = new Set<TableName>();
 
   constructor() {
     for (const name of TABLE_NAMES) {
@@ -63,10 +62,10 @@ export class FakeDb {
   reset(): void {
     for (const rows of this.tables.values()) rows.clear();
     this.mock.resetHistory();
-    this.batchWriteMode = 'ok';
+    this.failPuts.clear();
   }
 
-  /** The calls made with one kind of command, e.g. commandCalls(BatchWriteCommand). */
+  /** The calls made with one kind of command, e.g. commandCalls(PutCommand). */
   commandCalls<T extends { input: object }>(
     command: new (...args: never[]) => T,
   ): Array<{ input: object }> {
@@ -94,9 +93,23 @@ export class FakeDb {
     this.batches.set(batchId, { batchId, name });
   }
 
-  /** Inserts an item into any table. */
-  put(table: TableName, item: object): void {
-    this.rows(table).set(this.storageKey(table, item as Item), structuredClone(item as Item));
+  /**
+   * Inserts an item into any table. An Answers item gets the attributes of the `byExam` index
+   * (examId, studentEmail, examSort) filled in from its key, the way a backfilled table looks;
+   * pass `{ unindexed: true }` to insert it exactly as given, as an answer that was never indexed.
+   */
+  put(table: TableName, item: object, options: { unindexed?: boolean } = {}): void {
+    const row = structuredClone(item as Item);
+    if (table === 'Answers' && !options.unindexed) this.addAnswerIndexKeys(row);
+    this.rows(table).set(this.storageKey(table, row), row);
+  }
+
+  private addAnswerIndexKeys(row: Item): void {
+    const parts = parseExamStudentKey(String(row['examStudent']));
+    if (!parts) return;
+    row['examId'] ??= parts.examId;
+    row['studentEmail'] ??= parts.studentEmail;
+    row['examSort'] ??= `${parts.studentEmail}#${String(row['questionNumber'])}`;
   }
 
   /** Reads an item by its key attributes, e.g. get('Questions', { questionId: 'q', version: 1 }). */
@@ -141,27 +154,12 @@ export class FakeDb {
 
     this.mock.on(PutCommand).callsFake((input) => {
       const table = this.nameOf(input.TableName);
+      if (this.failPuts.has(table)) throw new Error(`PutItem on ${table} failed`);
       const key = this.storageKey(table, input.Item);
       const existing = this.rows(table).get(key);
       if (!this.conditionHolds(input.ConditionExpression, input, existing)) throw conditionFailed();
       this.rows(table).set(key, structuredClone(input.Item));
       return {};
-    });
-
-    this.mock.on(BatchWriteCommand).callsFake((input) => {
-      if (this.batchWriteMode === 'throw') throw new Error('BatchWriteItem failed');
-      for (const [name, requests] of Object.entries(input.RequestItems ?? {})) {
-        const table = this.nameOf(name);
-        for (const request of requests as Array<{ PutRequest?: { Item: Item } }>) {
-          if (request.PutRequest) {
-            this.rows(table).set(
-              this.storageKey(table, request.PutRequest.Item),
-              structuredClone(request.PutRequest.Item),
-            );
-          }
-        }
-      }
-      return { UnprocessedItems: {} };
     });
 
     this.mock.on(UpdateCommand).callsFake((input) => {

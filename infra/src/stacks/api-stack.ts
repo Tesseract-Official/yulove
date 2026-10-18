@@ -1,5 +1,5 @@
 import { CfnOutput, Duration, Stack, type StackProps } from 'aws-cdk-lib';
-import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
+import { CfnStage, CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { UserPool, UserPoolClient } from 'aws-cdk-lib/aws-cognito';
@@ -13,10 +13,12 @@ import type { Construct } from 'constructs';
 import { BUCKET_ENV, FUNCTION_ENV, QUEUE_ENV, TABLE_ENV, type FunctionName } from '@yulove/shared';
 import { createNodeFunction } from '../lib/node-function.js';
 import { grantObjects } from '../lib/s3-grants.js';
+import { grantTable, type TableAccess } from '../lib/table-grants.js';
 import type { TableName } from './data-stack.js';
 import type { QueueName } from './queue-stack.js';
 
-export type Access = 'read' | 'write' | 'readWrite';
+/** Table access has no delete level (see TableAccess); bucket access is limited to key patterns. */
+export type Access = TableAccess;
 
 /**
  * What a route's Lambda may touch. Anything not listed is not granted, except that every route
@@ -61,6 +63,14 @@ export function assetCopyCommands(
   );
 }
 
+/**
+ * Requests per second the API accepts from all callers together, and the short burst allowed above
+ * it. The account runs at most 10 Lambdas at once, so a flood is turned away here (429) instead of
+ * piling up behind them.
+ */
+export const API_RATE_LIMIT = 50;
+export const API_BURST_LIMIT = 100;
+
 export interface ApiStackProps extends StackProps {
   webOrigins: string[];
   userPool: UserPool;
@@ -94,13 +104,18 @@ export class ApiStack extends Stack {
           CorsHttpMethod.GET,
           CorsHttpMethod.POST,
           CorsHttpMethod.PUT,
-          CorsHttpMethod.DELETE,
           CorsHttpMethod.OPTIONS,
         ],
         allowHeaders: ['authorization', 'content-type'],
         maxAge: Duration.hours(1),
       },
     });
+
+    const stage = this.httpApi.defaultStage?.node.defaultChild as CfnStage;
+    stage.defaultRouteSettings = {
+      throttlingRateLimit: API_RATE_LIMIT,
+      throttlingBurstLimit: API_BURST_LIMIT,
+    };
 
     new CfnOutput(this, 'ApiUrl', { value: this.httpApi.apiEndpoint });
   }
@@ -136,11 +151,7 @@ export class ApiStack extends Stack {
     ][]) {
       const table = this.props.tables[name];
       environment[TABLE_ENV[name]] = table.tableName;
-      grants.push((fn) => {
-        if (access === 'read') table.grantReadData(fn);
-        else if (access === 'write') table.grantWriteData(fn);
-        else table.grantReadWriteData(fn);
-      });
+      grants.push((fn) => grantTable(fn, table, access));
     }
 
     for (const name of Object.keys(permissions.queues ?? {}) as QueueName[]) {
@@ -152,17 +163,15 @@ export class ApiStack extends Stack {
     if (permissions.bucket) {
       const { bucket } = this.props;
       const access = permissions.bucket;
+      const pattern = permissions.bucketPrefix;
+      // Whole-bucket grants include delete and listing, so a route must name the keys it needs.
+      if (!pattern) throw new Error(`${method} ${path}: bucket access needs a bucketPrefix`);
       environment[BUCKET_ENV] = bucket.bucketName;
-      grants.push((fn) => {
-        const pattern = permissions.bucketPrefix;
-        if (pattern) {
-          grantObjects(fn, bucket, access, pattern, {
-            listBucket: permissions.bucketList === true,
-          });
-        } else if (access === 'read') bucket.grantRead(fn);
-        else if (access === 'write') bucket.grantWrite(fn);
-        else bucket.grantReadWrite(fn);
-      });
+      grants.push((fn) =>
+        grantObjects(fn, bucket, access, pattern, {
+          listBucket: permissions.bucketList === true,
+        }),
+      );
     }
 
     for (const name of Object.keys(permissions.lambdas ?? {}) as FunctionName[]) {

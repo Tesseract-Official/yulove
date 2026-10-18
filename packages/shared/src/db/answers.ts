@@ -1,7 +1,16 @@
 import { GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { AnswerStatus, FailReason, Language } from '../enums.js';
 import { normaliseEmail } from '../identity.js';
-import { examStudentKey, type AnswerItem, type Override, type TestVerdict } from '../types.js';
+import { emitFailedToGrade } from '../metrics.js';
+import { ANSWERS_BY_EXAM_INDEX } from '../tables.js';
+import {
+  answerIndexKeys,
+  examStudentKey,
+  type AnswerItem,
+  type ExamAnswerSummary,
+  type Override,
+  type TestVerdict,
+} from '../types.js';
 import { buildSet, docClient, isConditionalCheckFailure, queryAll, tableName } from './client.js';
 
 const table = () => tableName('Answers');
@@ -33,6 +42,20 @@ export function listAnswersForStudent(examId: string, studentEmail: string): Pro
   });
 }
 
+/**
+ * Every answer of an exam, for every student, with one paginated query on the `byExam` index.
+ * Items carry the fields scoring and the board need, not transcriptions or verdicts. Only answers
+ * that have the index attributes are listed (see beginAttempt and the backfill script).
+ */
+export function listAnswersByExam(examId: string): Promise<ExamAnswerSummary[]> {
+  return queryAll<ExamAnswerSummary>({
+    TableName: table(),
+    IndexName: ANSWERS_BY_EXAM_INDEX,
+    KeyConditionExpression: 'examId = :examId',
+    ExpressionAttributeValues: { ':examId': examId },
+  });
+}
+
 /** True when the student has at least one answer (any status) in the exam. */
 export async function hasAnyAnswer(examId: string, studentEmail: string): Promise<boolean> {
   const out = await docClient().send(
@@ -55,6 +78,17 @@ export async function beginAttempt(key: AnswerKey, imageKey?: string): Promise<n
   const names: Record<string, string> = { '#attempt': 'attempt', '#status': 'status' };
   const values: Record<string, unknown> = { ':one': 1, ':queued': 'QUEUED' satisfies AnswerStatus };
   let set = '#status = :queued';
+
+  // The attributes of the byExam index. This is the one place an answer is created, and it runs
+  // again on every upload and re-run, so an answer never lacks them.
+  const index = answerIndexKeys(key.examId, key.studentEmail, key.questionNumber);
+  names['#examId'] = 'examId';
+  names['#studentEmail'] = 'studentEmail';
+  names['#examSort'] = 'examSort';
+  values[':examId'] = index.examId;
+  values[':studentEmail'] = index.studentEmail;
+  values[':examSort'] = index.examSort;
+  set += ', #examId = :examId, #studentEmail = :studentEmail, #examSort = :examSort';
   if (imageKey !== undefined) {
     names['#imageKey'] = 'imageKey';
     values[':imageKey'] = imageKey;
@@ -177,8 +211,12 @@ export async function countTranscribeTry(
 /** Longest failure explanation that is stored. */
 export const MAX_FAIL_DETAIL = 300;
 
-/** Ends the answer as FAILED_TO_GRADE with a reason and, optionally, a readable explanation. */
-export function markFailed(
+/**
+ * Ends the answer as FAILED_TO_GRADE with a reason and, optionally, a readable explanation. When
+ * the write goes through (it is not stale) it also counts one `FailedToGrade` metric, which the
+ * hourly alarm watches. The transcribe and record Lambdas and the submit route all end here.
+ */
+export async function markFailed(
   key: AnswerKey,
   attempt: number,
   failReason: FailReason,
@@ -187,12 +225,14 @@ export function markFailed(
   const text = detail?.trim();
   const failDetail =
     text && text.length > MAX_FAIL_DETAIL ? `${text.slice(0, MAX_FAIL_DETAIL - 3)}...` : text;
-  return writeForAttempt(
+  const outcome = await writeForAttempt(
     key,
     attempt,
     { status: 'FAILED_TO_GRADE', failReason, failDetail: failDetail || undefined },
     ['transcribeTries', ...(failDetail ? [] : ['failDetail'])],
   );
+  if (outcome === 'written') emitFailedToGrade(failReason);
+  return outcome;
 }
 
 export interface AnswerResult {

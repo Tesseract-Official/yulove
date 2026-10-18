@@ -25,12 +25,13 @@ import {
   OperatingSystemFamily,
 } from 'aws-cdk-lib/aws-ecs';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
+import { LogGroup } from 'aws-cdk-lib/aws-logs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import type { Queue } from 'aws-cdk-lib/aws-sqs';
 import { BUCKET_ENV, QUEUE_ENV } from '@yulove/shared';
 import type { Construct } from 'constructs';
 import { WORKER_DIR } from '../lib/handler-paths.js';
+import { LOG_RETENTION } from '../lib/node-function.js';
 
 export interface WorkerStackProps extends StackProps {
   executeQueue: Queue;
@@ -97,7 +98,7 @@ export class WorkerStack extends Stack {
     });
 
     const logGroup = new LogGroup(this, 'LogGroup', {
-      retention: RetentionDays.THREE_MONTHS,
+      retention: LOG_RETENTION,
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
