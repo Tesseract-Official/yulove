@@ -366,3 +366,14 @@ describe('running the script', () => {
     expect(result.stderr).toMatch(/Set AWS_PROFILE/);
   });
 });
+
+describe('parseArgs and the extra --', () => {
+  it('ignores a leading -- that pnpm passes on', async () => {
+    const { parseArgs } = await import('./try-transcribe.js');
+    expect(parseArgs(['--', 'photo.jpg', 'q1', '2'])).toEqual({
+      imagePath: 'photo.jpg',
+      questionId: 'q1',
+      version: 2,
+    });
+  });
+});

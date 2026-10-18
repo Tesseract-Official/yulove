@@ -35,13 +35,6 @@ const queues = new QueueStack(app, 'DsaJudgeQueues', { env });
 
 new BudgetStack(app, 'DsaJudgeBudget', { env, budgetEmail });
 
-// Alarms email the same address as the budget alerts.
-new MonitoringStack(app, 'DsaJudgeMonitoring', {
-  env,
-  queues: queues.queues,
-  alertEmail: budgetEmail,
-});
-
 new WorkerStack(app, 'DsaJudgeWorker', {
   env,
   executeQueue: queues.queues.execute,
@@ -76,3 +69,11 @@ const api = new ApiStack(app, 'DsaJudgeApi', {
 });
 
 registerRoutes(api, { collegeDomain });
+
+// Alarms email the same address as the budget alerts.
+new MonitoringStack(app, 'DsaJudgeMonitoring', {
+  env,
+  queues: queues.queues,
+  httpApi: api.httpApi,
+  alertEmail: budgetEmail,
+});

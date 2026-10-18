@@ -17,7 +17,10 @@
     "web:vercel-env": "tsx web-vercel-env.ts",
     "backfill:answers-exam-index": "tsx backfill-answers-exam-index.ts",
     "ecr:lifecycle": "tsx ecr-lifecycle.ts",
-    "logs:retention": "tsx set-log-retention.ts"
+    "logs:retention": "tsx set-log-retention.ts",
+    "compare:transcriptions": "tsx compare-transcriptions.ts",
+    "cleanup:dev-data": "tsx cleanup-dev-data.ts",
+    "mark:dev-data": "tsx mark-dev-data.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1152.0",
@@ -29,6 +32,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1152.0",
     "@aws-sdk/client-sqs": "^3.1152.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
+    "@aws-sdk/s3-request-presigner": "^3.1152.0",
     "@yulove/pipeline": "workspace:^",
     "@yulove/shared": "workspace:^"
   },

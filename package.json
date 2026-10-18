@@ -23,7 +23,10 @@
     "web:vercel-env": "pnpm --filter @yulove/scripts web:vercel-env",
     "backfill:answers-exam-index": "pnpm --filter @yulove/scripts backfill:answers-exam-index",
     "ecr:lifecycle": "pnpm --filter @yulove/scripts ecr:lifecycle",
-    "logs:retention": "pnpm --filter @yulove/scripts logs:retention"
+    "logs:retention": "pnpm --filter @yulove/scripts logs:retention",
+    "compare:transcriptions": "pnpm --filter @yulove/scripts compare:transcriptions",
+    "cleanup:dev-data": "pnpm --filter @yulove/scripts cleanup:dev-data",
+    "mark:dev-data": "pnpm --filter @yulove/scripts mark:dev-data"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

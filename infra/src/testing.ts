@@ -78,6 +78,7 @@ export function buildApp(
     ? new MonitoringStack(app, 'Monitoring', {
         env,
         queues: queues.queues,
+        httpApi: api.httpApi,
         alertEmail: budgetEmail,
       })
     : undefined;

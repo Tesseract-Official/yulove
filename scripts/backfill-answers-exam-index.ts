@@ -3,7 +3,7 @@
 // missing from the status board, the results and publish. Safe to run again: it only touches
 // answers that lack `examSort`, and never overwrites anything else.
 //
-//   AWS_PROFILE=dsa-judge pnpm backfill:answers-exam-index -- --dry-run
+//   AWS_PROFILE=dsa-judge pnpm backfill:answers-exam-index --dry-run
 //   AWS_PROFILE=dsa-judge pnpm backfill:answers-exam-index
 //
 // Deploy order: deploy DsaJudgeData (it adds the index), run this, deploy the rest, run it again.
@@ -12,8 +12,8 @@ import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client
 import { DynamoDBDocumentClient, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { answerIndexKeys, mapLimit, parseExamStudentKey } from '@yulove/shared';
 import { realpathSync } from 'node:fs';
-import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { parseFlags } from './args.js';
 import { DATA_STACK, REGION } from './seed-super-admins.js';
 import { stackOutputs } from './smoke-worker.js';
 
@@ -129,10 +129,10 @@ async function main(argv: string[]): Promise<void> {
   const profile = process.env['AWS_PROFILE'];
   if (!profile) {
     throw new Error(
-      'Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm backfill:answers-exam-index -- --dry-run',
+      'Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm backfill:answers-exam-index --dry-run',
     );
   }
-  const { values } = parseArgs({ args: argv, options: { 'dry-run': { type: 'boolean' } } });
+  const { values } = parseFlags(argv, { 'dry-run': { type: 'boolean' } });
   const dryRun = values['dry-run'] === true;
 
   const outputs = await stackOutputs(new CloudFormationClient({ region: REGION }), DATA_STACK);

@@ -3,7 +3,7 @@
 // repository holds only the worker image (Lambdas are bundled to S3). Replaces the bootstrap's own
 // rule, which only expires untagged images.
 //
-//   AWS_PROFILE=dsa-judge pnpm ecr:lifecycle -- --dry-run
+//   AWS_PROFILE=dsa-judge pnpm ecr:lifecycle --dry-run
 //   AWS_PROFILE=dsa-judge pnpm ecr:lifecycle
 import {
   DescribeRepositoriesCommand,
@@ -13,8 +13,8 @@ import {
   PutLifecyclePolicyCommand,
 } from '@aws-sdk/client-ecr';
 import { realpathSync } from 'node:fs';
-import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { parseFlags } from './args.js';
 import { REGION } from './seed-super-admins.js';
 
 /** Images kept; older ones (by push time) are expired. */
@@ -75,10 +75,10 @@ async function main(argv: string[]): Promise<void> {
   const profile = process.env['AWS_PROFILE'];
   if (!profile) {
     throw new Error(
-      'Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm ecr:lifecycle -- --dry-run',
+      'Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm ecr:lifecycle --dry-run',
     );
   }
-  const { values } = parseArgs({ args: argv, options: { 'dry-run': { type: 'boolean' } } });
+  const { values } = parseFlags(argv, { 'dry-run': { type: 'boolean' } });
   const dryRun = values['dry-run'] === true;
 
   const client = new ECRClient({ region: REGION });

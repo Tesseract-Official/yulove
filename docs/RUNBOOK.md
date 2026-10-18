@@ -1,0 +1,405 @@
+# Runbook
+
+How to run the Paper DSA Exam Judge day to day. It is written for the founders, in plain language. For how the system works inside, read [DESIGN.md](DESIGN.md).
+
+Two rules before anything else:
+
+- **Flags go straight after the command.** Write `pnpm cleanup:dev-data --dry-run`, not `pnpm cleanup:dev-data -- --dry-run`. (The scripts tolerate an extra `--`, but don't rely on it.)
+- **Nothing here deploys by itself.** Every step that changes AWS is a command you type on purpose.
+
+## Contents
+
+1. [The basics](#1-the-basics)
+2. [Every working day: logging in and deploying](#2-every-working-day-logging-in-and-deploying)
+3. [People: teachers, batch managers, founders](#3-people-teachers-batch-managers-founders)
+4. [Start of a semester](#4-start-of-a-semester)
+5. [A normal week: teachers](#5-a-normal-week-teachers)
+6. [A normal week: batch managers](#6-a-normal-week-batch-managers)
+7. [What students see, and appeals](#7-what-students-see-and-appeals)
+8. [Super admin: overrides and the audit log](#8-super-admin-overrides-and-the-audit-log)
+9. [Answers that could not be graded](#9-answers-that-could-not-be-graded)
+10. [Gemini](#10-gemini)
+11. [Alarms](#11-alarms)
+12. [Costs](#12-costs)
+13. [Rolling back](#13-rolling-back)
+14. [Practice-exam checklist](#14-practice-exam-checklist)
+
+## 1. The basics
+
+**What runs where**
+
+- The **website** runs on Vercel. Every push to the `main` branch on GitHub makes Vercel build and publish it again by itself.
+- Everything else runs in **AWS**, region `ap-south-1` (Mumbai), as seven **stacks** (a stack is a bundle of AWS things that is deployed together):
+
+| Stack                | What is in it                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `DsaJudgeData`       | The database tables, the photo and file bucket, the secret that holds the Gemini key |
+| `DsaJudgeAuth`       | Sign-in (Cognito and Google)                                                         |
+| `DsaJudgeQueues`     | The three waiting lines (queues) that grading moves through                          |
+| `DsaJudgePipeline`   | The programs that read the photo with Gemini, record results and generate tests      |
+| `DsaJudgeApi`        | The programs behind every button on the website                                      |
+| `DsaJudgeWorker`     | The machine that runs students' code (switched off when idle)                        |
+| `DsaJudgeBudget`     | The monthly spending warning                                                         |
+| `DsaJudgeMonitoring` | The alarms                                                                           |
+
+**Words used here**
+
+- **Deploy**: send the code in this folder to AWS so it goes live.
+- **Batch**: a class group of students. Each exam belongs to one batch.
+- **Exam**: the set of questions a batch writes in one week.
+- **Appeal**: a student asking for one question to be looked at again.
+- **Override**: a founder setting a question's score by hand.
+- **Practice data / dev data**: sample data that is marked `dev` so it can be removed later in one go.
+
+**Your AWS login name.** The commands below use the profile name `dsa-judge`. Use whatever name you gave your AWS login profile.
+
+## 2. Every working day: logging in and deploying
+
+### Log in to AWS
+
+Your AWS login expires every few hours. When a command says the token has expired or credentials are missing:
+
+```bash
+aws sso login --profile dsa-judge
+```
+
+A browser window opens; approve it. Then put `AWS_PROFILE=dsa-judge` in front of every command that talks to AWS (the examples below do).
+
+### Get the code ready
+
+Once per terminal window, in the project folder:
+
+```bash
+nvm use
+pnpm install
+```
+
+`nvm use` switches to Node 22 (the version in the file `.nvmrc`). `pnpm install` is only needed after you pulled changes.
+
+### Deploy
+
+Always run the checks first. They take a couple of minutes and catch most mistakes:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+```
+
+Look at what would change, without changing anything:
+
+```bash
+AWS_PROFILE=dsa-judge pnpm --filter @yulove/infra cdk diff
+```
+
+Then deploy. The simple way is everything that changed (AWS skips what did not):
+
+```bash
+AWS_PROFILE=dsa-judge pnpm --filter @yulove/infra cdk deploy --all
+```
+
+Or only one stack, if you know which one you changed:
+
+```bash
+AWS_PROFILE=dsa-judge pnpm --filter @yulove/infra cdk deploy DsaJudgeApi
+```
+
+| You changed                                                                              | Deploy                                                             |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| API code (`services/api`)                                                                | `DsaJudgeApi`                                                      |
+| Gemini, grading or test-generation code, or the prompts (`services/pipeline`, `prompts`) | `DsaJudgePipeline`                                                 |
+| Code the worker runs (`worker`)                                                          | `DsaJudgeWorker` (Docker Desktop must be running on your computer) |
+| `infra/cdk.json` (models, web address, emails)                                           | `--all`                                                            |
+| Shared code (`packages/shared`)                                                          | `--all`                                                            |
+
+**The website** needs no command: push to `main` and Vercel publishes it. Watch the deployment on the Vercel dashboard. If you add a new web address, add it to `webOrigin` in `infra/cdk.json` (comma-separated, keep `http://localhost:5173`) and redeploy `--all`, because sign-in and uploads only accept the addresses on that list. The Vercel settings (three environment variables) are in `web/README.md`; `AWS_PROFILE=dsa-judge pnpm web:vercel-env` prints their values.
+
+**After a deploy**, open the website, sign in, and open the screen that uses what you changed. The alarms (section 11) will email you if something is badly wrong.
+
+### The first emails
+
+The first time `DsaJudgeMonitoring` is deployed, AWS sends a "Confirm subscription" email to the address in `budgetEmail`. Click the link in it, or the alarms will never reach you. The budget warning (section 12) needs no confirmation.
+
+## 3. People: teachers, batch managers, founders
+
+Founders are the **super admins**. They are listed in `superAdminEmails` in `infra/cdk.json`. To add a founder: add the address there, deploy `--all`, then run:
+
+```bash
+AWS_PROFILE=dsa-judge pnpm seed:super-admins
+```
+
+**Teachers and batch managers** are created by a founder on the website:
+
+1. Sign in, open **Teachers and batch managers**.
+2. Add the person with their college email, name and role (teacher or batch manager), and tick the batches they work with.
+3. To change their batches later, edit them on the same screen.
+
+They then sign in with that college Google account. Someone who is not in the list cannot sign in at all.
+
+A teacher or batch manager only sees the batches they are assigned to. A teacher only changes the questions and exams they made themselves.
+
+**Taking someone's access away.** There is no button for this yet (it is an open item in the design document). Ask a developer to set `active` to `false` on the person's row in the `Users` table. They stay in the system but every request from them is refused.
+
+## 4. Start of a semester
+
+1. **Create the batches.** A founder opens **Batches** and adds each one (a short id such as `2026-cse-a` and a name).
+2. **Assign people to them.** Teachers and batch managers, as in section 3.
+3. **Add the students.** The batch manager opens **Add students**, chooses the file and presses **Upload students**. The file is a CSV file with four columns and a header row: name, college email, roll number, batch. Header spelling is forgiving ("College email", "Roll no" and so on). Up to 2,000 rows. The result lists each row as **created**, **updated** (already there, details refreshed) or **rejected** with the reason (for example an email outside the college domain, a roll number used twice, or a batch the manager is not assigned to). Fix the rejected rows in the file and upload again; rows already created are simply updated.
+4. **Students sign in with their college Gmail.** They open the website and press **Sign in with Google**. They only get in if they were added in step 3. New students can be added at any time; they appear in exams from their first visit.
+5. **Founders never go in the student CSV.** Their addresses are blocked there on purpose.
+
+## 5. A normal week: teachers
+
+Everything is under **Questions** and **Exams** on the teacher's home screen.
+
+1. **Write the question.** Questions → new question: title, statement, what the input and output are, constraints, one to three examples, the time complexity you expect (for example `O(n log n)`), time and memory limits and how the answer is compared (exactly, in any order, or numbers within 0.000001). The page can suggest the function name to put in the statement.
+2. **Generate tests.** Open the question's tests page and press **Generate tests**. Gemini writes a reference solution and ten tests (seven small, three large). The first time can take a few minutes: press **Refresh** until the status changes. If it says it failed, read the reason and press Generate again.
+3. **Review the tests.** When the status is **Ready for review** you see the function signature and all ten tests with their expected answers. Read them like a student would. If the expected answers look wrong, press **Regenerate** instead of approving; a wrong reference solution would mark every student wrong.
+4. **Approve.** Press **Approve**. Only approved questions can go into an exam.
+5. **Make the exam.** Exams → new exam: choose the batch, the title and date, add approved questions in order and give each its marks.
+6. **Make the PDF.** Open the exam and press **Generate PDF** (**Make the PDF again** if you changed the exam); then **Download PDF** to print or project it. Only the teacher who created the exam can make it; any teacher or batch manager of the batch can download it.
+
+Good to know:
+
+- Once any answer exists for an exam, its questions and marks are locked (the title and date can still change).
+- If you edit a question that is already used in an exam with answers, the system makes a new version of it; the old exam keeps the old version. Changing only the title or the examples keeps the generated tests; changing anything else means generating and approving again.
+- Students write one answer per page and only the function, not the input and output code. The PDF says so.
+
+After the exam, **Results** shows every student's score per question and in total, by name. **Appeals** is in section 7.
+
+## 6. A normal week: batch managers
+
+1. **Before the exam**: nothing, apart from making sure the students are added (section 4) and the exam's PDF exists.
+2. **After the exam**, open **Upload answers**:
+   1. Choose the batch and the exam.
+   2. Search for a student by roll number, name or email and pick them.
+   3. Pick a question number.
+   4. Press **Take a photo** (on a phone) or **Choose a file**.
+   5. Crop to the answer, turn the picture if needed, and press **Send for grading**. The app shrinks the photo and sends it.
+   6. Move on to the next question, or press **Choose another student**. To replace a photo, upload the same question again (**Replace photo**, then **Replace and grade again**); the old one is kept as an older version.
+3. **Students who were absent**: mark them absent from the same student picker. An absent student scores zero everywhere and shows "Absent"; uploads for them are blocked until you unmark them.
+4. **Check grading and publish**: this is the status board. It lists every student and every question with a status (not submitted, queued, being read, being graded, graded, or could not be graded). Press **Refresh** to update it; it does not refresh itself. A big batch takes a while, since photos are read a few at a time. From the board you can:
+   - open an answer to see the photo, what Gemini read and the tests that failed;
+   - **Grade again** (re-run) an answer, for example one that could not be graded;
+   - download the exam PDF.
+5. **Publish.** When the board looks right, press **Publish results**. If some answers are still being graded it warns you and shows how many; you may press **Publish anyway** and those answers will update later. Students see nothing before this moment. Publishing again does nothing.
+
+Grading again after publishing is fine: the student's score is replaced by the new one.
+
+## 7. What students see, and appeals
+
+After publishing, a student opens **Your results**, picks the exam and sees for each question: marks out of the total, how many of the ten tests passed, and for failed small tests the input, the expected output and their output. Failed large tests show only "Large test 2: time limit exceeded" (or the verdict). Special lines appear for:
+
+- "Did not meet the required time complexity" (the question scored zero for being too slow in principle);
+- "Could not be graded — raise an appeal";
+- "Still being graded", "No answer was submitted", "Absent";
+- "Score adjusted by admin" (a founder set it by hand).
+
+Students never see the photo, the code that was read, or who handled their appeal.
+
+**An appeal** starts when a student presses **Raise an appeal** on one question and writes a short message (up to 1,000 characters). Only one appeal can be open per question.
+
+Batch managers and teachers see appeals under **Appeals** (choose batch and exam; open ones come first). Opening one shows the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results. Then choose:
+
+- **Re-grade as is**: grade the stored photo again.
+- **Upload a better photo and re-grade**: batch managers only. Choose a new picture, crop it, and it is graded again. (A teacher who needs this asks a batch manager.)
+- **Close with a note**: a note is required; the student sees it.
+
+After a re-grade press **Refresh** on the appeal to watch the new result. The student sees the status ("Waiting for a reviewer", "Your answer was graded again", "Closed") and your note.
+
+## 8. Super admin: overrides and the audit log
+
+Only founders can set a score by hand.
+
+1. Open the answer (from the board, results or an appeal).
+2. Press **Override score**, type the new score (between 0 and the question's marks) and a reason. The reason is required.
+3. To go back to the calculated score, open the same dialog and choose to remove the override (a reason is required for that too).
+
+An override stays through re-runs until a founder removes it. It cannot be set for a student marked absent: take away "absent" first. Students then see "Score adjusted by admin".
+
+**Audit history** (a panel on the same answer page) lists every change to that score, newest first: who, when, old and new score and the reason.
+
+Separately, the system quietly records every request a founder makes that changes something, and every time a founder reads results or an answer: who, what, when and whether it worked (never the contents). Founders cannot switch this off.
+
+## 9. Answers that could not be graded
+
+These show as **could not be graded** on the status board, with a reason. Students see "Could not be graded — raise an appeal".
+
+| Reason               | What it means                                                        | What to do                                                                                                      |
+| -------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Unreadable           | Gemini could not read the page (blurry, dark, cut off)               | Upload a clearer photo and re-grade. If the handwriting really cannot be read, a founder can override the score |
+| Unsupported language | The code is not Python, C++, Java or Go                              | It cannot be graded. A founder can override the score                                                           |
+| Gemini error         | Gemini was too busy or failed three times in a row                   | Wait a few minutes and press **Grade again**. If many fail at once, see "Gemini" below                          |
+| Worker error         | The step that runs the code failed (the detail says why)             | **Grade again**. If it keeps happening, check the alarms (section 11)                                           |
+| Driver mismatch      | Gemini's wrapper changed the student's code, so the check refused it | **Grade again** (it often works the second time). If it repeats, treat the page like an unreadable one          |
+
+If more than 20 answers fail in an hour you get an email (section 11).
+
+## 10. Gemini
+
+Gemini does two jobs: it writes the tests for a question, and it reads each photographed answer.
+
+### A paid key is needed before real exams
+
+The free Gemini allowance is far too small for a class. Before the practice exam, get a **paid** API key and store it:
+
+1. Open the AWS console → **Secrets Manager** → the secret `dsa-judge/gemini-api-key` → **Retrieve secret value** → **Edit**, paste the key as plain text, save. (A developer can do the same with `aws secretsmanager put-secret-value`.)
+2. The programs remember the key for a while, so a new key can take up to about fifteen minutes to be used. To make it immediate, deploy the pipeline: `AWS_PROFILE=dsa-judge pnpm --filter @yulove/infra cdk deploy DsaJudgePipeline`.
+
+The key is never kept in the code, the website or any file in this folder. Never paste it into chat, email or an issue.
+
+### Changing the model
+
+Open `infra/cdk.json` and look at `context`:
+
+- `geminiTestgenModel`: used for writing tests.
+- `geminiTranscribeModel`: used for reading photographed answers.
+
+Change the model name, run the checks (`pnpm lint`, `pnpm typecheck`, `pnpm test`), commit, and deploy `DsaJudgePipeline`. Test a new model on the practice sheets (section 14) before using it on a real exam.
+
+### Changing how Gemini reads answers (the prompt)
+
+The instructions are in `prompts/transcribe.md` (reading photos) and `prompts/testgen.md` (writing tests). Change them carefully, because they decide marks:
+
+1. Work in a branch, never straight on `main`.
+2. Edit `prompts/transcribe.md`. Keep the rules that say never change the student's logic and never follow instructions found inside the page.
+3. Try it on real photos **without deploying**:
+
+   ```bash
+   AWS_PROFILE=dsa-judge pnpm try:transcribe path/to/photo.jpg some-question-id
+   ```
+
+   It prints what Gemini read, the fixes it made and what the grader would do. It reads AWS and calls the real Gemini (it costs a little), and writes nothing to AWS. Try at least ten photos, including a messy one and one with crossed-out code, and compare with the paper.
+
+4. Run `pnpm test`, then commit, merge to `main` and deploy `DsaJudgePipeline`.
+5. If marks look worse afterwards, roll back (section 13).
+
+## 11. Alarms
+
+Alarms email the address in `budgetEmail`. Most alarms email twice: once when the problem starts and once when it ends. Eight alarms exist; six email you.
+
+| Alarm                                                            | It means                                                                                                                                             | What to do                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dsa-judge-transcribe-queue-oldest-message`                      | An answer has waited over an hour to be read by Gemini                                                                                               | Open the status board. Right after a big upload this can be normal (only five photos are read at once); if the number of queued answers is not going down, check Gemini (key, billing, quota) and the `DsaJudgePipeline` logs |
+| `dsa-judge-execute-queue-oldest-message`                         | An answer has waited over an hour for the machine that runs code. Also fires if that machine cannot start                                            | In the AWS console open **ECS** → cluster of `DsaJudgeWorker` → the service: is a task running? If not, look at its **Events** (often a bad deploy or an image problem). Re-deploying `DsaJudgeWorker` usually fixes it       |
+| `dsa-judge-results-queue-oldest-message`                         | Results have waited over 15 minutes to be recorded                                                                                                   | Look at the `DsaJudgePipeline` record function logs for errors. Check the database is reachable and not throttled                                                                                                             |
+| `dsa-judge-failed-to-grade`                                      | More than 20 answers could not be graded in an hour                                                                                                  | Open the board and look at the reasons (section 9). Many "Gemini error" means Gemini trouble; many "worker error" means the worker; many "unreadable" means bad photos                                                        |
+| `dsa-judge-app-errors`                                           | More than five unexpected errors in five minutes (a server error from the website's API, or a pipeline step that failed in a way nobody planned for) | Open CloudWatch → log groups, search `AppError`, and read the lines around it for the cause (`source` says where)                                                                                                             |
+| `dsa-judge-api-5xx`                                              | The website's API returned more than five server errors in five minutes, including programs that timed out or crashed                                | Same as above; also check whether you just deployed. If so, roll back (section 13)                                                                                                                                            |
+| `dsa-judge-worker-queue-has-work`, `dsa-judge-worker-queue-idle` | These never email. They start the worker when answers are waiting and stop it after fifteen empty minutes                                            | Nothing. They are why the worker costs nothing when idle                                                                                                                                                                      |
+
+**Where the logs are.** AWS console → **CloudWatch** → **Log groups**. Search for the stack name, for example `DsaJudgeApi` or `DsaJudgePipeline`. Logs are kept for 30 days. The worker's own log group name contains `DsaJudgeWorker`.
+
+**An alarm email arrives and you are unsure what to do.** First check the website still works: sign in, open the board. If it works and the alarm says OK later, it was a blip. If it keeps firing, roll back the last deploy (section 13) and ask a developer.
+
+## 12. Costs
+
+**Free or close to it**
+
+- Website hosting on Vercel (check your Vercel plan), sign-in (Cognito, free for this size), the database, queues, programs and API (pay only per use, tiny at this scale).
+- The worker. It is switched off when nothing is waiting and costs money only while it runs (a few hours a week). It has no network gateway and no private network endpoints, which would cost money all day.
+- The eight alarms and the first two budgets are inside the free allowance.
+
+**What costs money every month, even when nothing happens**
+
+- Two secrets in Secrets Manager (the Gemini key and the Google sign-in secret): about US$0.40 each per month.
+- Stored worker images (ECR) and stored photos and files (S3, kept forever, with older versions of replaced photos). Small, but they grow.
+- Database backup (point-in-time recovery) on the eight tables. Pennies while the data is small.
+
+**What costs money when used**
+
+- Gemini (the biggest cost; your paid key is billed by Google, not AWS).
+- The worker while it runs.
+
+**The budget warning.** A US$60 monthly budget emails the `budgetEmail` address when actual spending reaches 80% and 100%. It only warns; it never turns anything off. If you get one, open AWS **Billing** → **Cost Explorer** and group by service to see what grew.
+
+**One-time tidy-ups** (run once after the first deploy that includes them; look first with `--dry-run`):
+
+```bash
+AWS_PROFILE=dsa-judge pnpm ecr:lifecycle --dry-run
+AWS_PROFILE=dsa-judge pnpm ecr:lifecycle
+AWS_PROFILE=dsa-judge pnpm logs:retention --dry-run
+AWS_PROFILE=dsa-judge pnpm logs:retention
+```
+
+The first keeps only the last three worker images. The second sets 30-day retention on older log groups that never expired. Neither deletes anything but old images and, after 30 days, old logs.
+
+## 13. Rolling back
+
+If a deploy made things worse:
+
+1. Find the bad commit: `git log --oneline`.
+2. Undo it with a new commit (this keeps the history): `git revert <commit>`.
+3. Push to `main` (Vercel republishes the website by itself).
+4. Deploy what changed (section 2), usually `--all`.
+
+Notes:
+
+- **Data is never rolled back by this.** Photos, scores and appeals stay as they are. Code and settings go back; data does not.
+- Reverting a commit that added a table index or a new field is safe, but do not delete the data it wrote.
+- If data itself was damaged, do not try to fix it by hand: the database has point-in-time backups that a developer can restore into a new table. Ask before touching anything.
+- **The answer-index change.** If you ever need to rebuild the index that the status board reads: deploy `DsaJudgeData` first, run `AWS_PROFILE=dsa-judge pnpm backfill:answers-exam-index --dry-run`, then without `--dry-run`, deploy the rest, and run the backfill once more. Until the backfill has finished, the board may show old answers as missing.
+
+## 14. Practice-exam checklist
+
+Do this once, before the first real exam. It answers two questions: does Gemini read our students' handwriting well enough, and does everything work with a real class. The practice data is removed at the end.
+
+**A. Get ready**
+
+- [ ] A **paid** Gemini key is stored (section 10) and the pipeline is deployed.
+- [ ] Everything is deployed, with the answer index in place: `DsaJudgeData` first, then `pnpm backfill:answers-exam-index` (dry run, then real), then `--all`, then the backfill once more.
+- [ ] The alarm email subscription is confirmed (section 2).
+- [ ] The one-time tidy-ups from section 12 have been run.
+- [ ] A founder created the teachers, batch managers and a practice batch; the students (or a sample of them) were added by CSV.
+
+**B. Run the practice exam**
+
+- [ ] A teacher makes three to five questions, generates and reviews the tests, approves, makes an exam and the PDF.
+- [ ] Students write the exam on paper in class. Collect **30 to 50 real sheets**, covering all four languages if possible, neat and messy handwriting, and a few crossed-out answers.
+- [ ] A batch manager uploads every photo, marks absent students, and watches the status board until nothing is queued.
+- [ ] Open a handful of answers by hand and compare the photo with what Gemini read.
+- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end.
+
+**C. Measure Gemini**
+
+- [ ] Find the exam's id (it is in the address of the exam page, or ask a developer). Then:
+
+  ```bash
+  AWS_PROFILE=dsa-judge pnpm compare:transcriptions EXAM_ID
+  ```
+
+  This writes `transcription-compare-EXAM_ID.csv` in the folder where you ran it (it is not committed to git). Open it in a spreadsheet. Each row is one answer: roll number, question, a link to the photo, what Gemini read, the corrected code, the fixes it made, language, complexity, tests passed and the status.
+
+- [ ] The photo links last up to 7 days, **but stop working earlier when your AWS login expires**. The last column holds the photo's name in the bucket; run the command again for fresh links.
+- [ ] For each row, look at the photo and the "Raw transcription" and tick one of: _exactly right_, _small slip that did not change the result_, _wrong and changed the marks_. Look especially at the "Fixes" column: any fix that changed what the code does is a serious error.
+- [ ] Write down the counts. As a guide: if more than about one answer in ten is _wrong and changed the marks_, do not go live; tune the prompt (section 10) or try another model, and run the practice again on the same sheets.
+
+**D. Remove the practice data**
+
+Practice data made through the website is not marked as practice, so mark it first. Look, then do it (replace `EXAM_ID`):
+
+```bash
+AWS_PROFILE=dsa-judge pnpm mark:dev-data EXAM_ID --batch --questions --dry-run
+AWS_PROFILE=dsa-judge pnpm mark:dev-data EXAM_ID --batch --questions --yes
+```
+
+`--batch` also marks the practice batch and its **students** (never teachers, batch managers or founders). `--questions` also marks the questions the exam used. Leave a flag out to keep that part.
+
+Then look at what would be removed, read the list, and only then delete:
+
+```bash
+AWS_PROFILE=dsa-judge pnpm cleanup:dev-data --dry-run
+AWS_PROFILE=dsa-judge pnpm cleanup:dev-data --yes
+```
+
+What cleanup does: it removes only things marked as practice: the answers, the exam, the exam rows, the appeals of that exam, and the photos, PDFs and test files in the bucket (every stored version). It never touches anything that is not marked, never removes a founder, and never touches the audit log. It always prints the list first; without `--yes` it changes nothing. If it says it **kept** something (for example a practice batch that real students or a real exam still use), nothing was lost: fix the reason it gave and run it again. Students' sign-in accounts at Google/Cognito are not removed, but they stop working once their row is gone.
+
+- [ ] Open the website: the board, the exam list and the question list no longer show practice items.
+
+**E. Go live**
+
+- [ ] The practice results are written down and good enough.
+- [ ] Real batches, teachers, batch managers and students are in place (section 4).
+- [ ] The alarm email works (ask a developer to send a test, or watch for the first alarm).
+- [ ] Everyone who will use the system has signed in once.
+- [ ] Gemini billing has a spending alert set in Google's console.

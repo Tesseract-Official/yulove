@@ -2,7 +2,7 @@
 // stacks managed them, which never expire. It only changes retention; it deletes nothing, and
 // leaves groups that already keep 30 days or less alone.
 //
-//   AWS_PROFILE=dsa-judge pnpm logs:retention -- --dry-run
+//   AWS_PROFILE=dsa-judge pnpm logs:retention --dry-run
 //   AWS_PROFILE=dsa-judge pnpm logs:retention
 import {
   CloudWatchLogsClient,
@@ -10,8 +10,8 @@ import {
   PutRetentionPolicyCommand,
 } from '@aws-sdk/client-cloudwatch-logs';
 import { realpathSync } from 'node:fs';
-import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { parseFlags } from './args.js';
 import { REGION } from './seed-super-admins.js';
 
 export const RETENTION_DAYS = 30;
@@ -77,10 +77,10 @@ async function main(argv: string[]): Promise<void> {
   const profile = process.env['AWS_PROFILE'];
   if (!profile) {
     throw new Error(
-      'Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm logs:retention -- --dry-run',
+      'Set AWS_PROFILE to the AWS profile to use, e.g. AWS_PROFILE=dsa pnpm logs:retention --dry-run',
     );
   }
-  const { values } = parseArgs({ args: argv, options: { 'dry-run': { type: 'boolean' } } });
+  const { values } = parseFlags(argv, { 'dry-run': { type: 'boolean' } });
   const dryRun = values['dry-run'] === true;
 
   console.log(`Profile ${profile}${dryRun ? ' (dry run)' : ''}.`);

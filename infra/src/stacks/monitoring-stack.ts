@@ -1,4 +1,5 @@
 import { Duration, Stack, type StackProps } from 'aws-cdk-lib';
+import type { HttpApi } from 'aws-cdk-lib/aws-apigatewayv2';
 import {
   Alarm,
   ComparisonOperator,
@@ -42,14 +43,22 @@ export const FAILED_TO_GRADE_PER_HOUR = 20;
 export const APP_ERRORS_PER_5_MINUTES = 5;
 
 /**
+ * More 5xx responses than this from the API gateway in 5 minutes raise an alarm. Unlike `AppError`,
+ * this also counts Lambda timeouts and crashes, which never reach apiHandler.
+ */
+export const API_5XX_PER_5_MINUTES = 5;
+
+/**
  * The most CloudWatch alarms the whole app may have, to stay inside the free tier. The worker
  * stack has two (its scaling alarms); this stack has MONITORING_ALARM_COUNT.
  */
 export const MAX_ALARMS_IN_APP = 10;
-export const MONITORING_ALARM_COUNT = QUEUE_NAMES.length + 2;
+export const MONITORING_ALARM_COUNT = QUEUE_NAMES.length + 3;
 
 export interface MonitoringStackProps extends StackProps {
   queues: Record<QueueName, Queue>;
+  /** The HTTP API whose 5xx responses are counted. */
+  httpApi: HttpApi;
   /** Who is emailed. A `<PLACEHOLDER>` is accepted so the app still synthesizes; nobody is emailed. */
   alertEmail: string;
 }
@@ -59,6 +68,8 @@ export interface MonitoringStackProps extends StackProps {
  *  - the oldest message on each queue waits too long (over 60 minutes for transcribe and execute, 15 for results);
  *  - more than 20 answers in an hour ended as FAILED_TO_GRADE (embedded metric format, printed by
  *    the transcribe and record Lambdas and the submit route);
+ *  - more than 5 5xx responses from the HTTP API in 5 minutes (what the gateway returns, so it also
+ *    catches Lambda timeouts and crashes that never reach apiHandler);
  *  - more than 5 `AppError` metrics in 5 minutes (embedded metric format, printed by apiHandler on
  *    a 5xx and by the pipeline Lambdas on an unexpected caught error). It counts only this app, and
  *    not a Gemini-busy redelivery or a handled FAILED_TO_GRADE.
@@ -101,6 +112,16 @@ export class MonitoringStack extends Stack {
         period: Duration.hours(1),
       }),
       threshold: FAILED_TO_GRADE_PER_HOUR,
+    });
+
+    this.addAlarm('Api5xxAlarm', {
+      alarmName: 'dsa-judge-api-5xx',
+      description: `More than ${API_5XX_PER_5_MINUTES} server errors (5xx) from the API in 5 minutes, including Lambda timeouts and crashes.`,
+      metric: props.httpApi.metricServerError({
+        period: Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: API_5XX_PER_5_MINUTES,
     });
 
     this.addAlarm('AppErrorsAlarm', {

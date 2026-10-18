@@ -19,5 +19,8 @@ pnpm-debug.log*
 .idea/
 .vscode/
 
+# Spreadsheets from pnpm compare:transcriptions (they hold students' work)
+transcription-compare-*.csv
+
 # Local web runtime config (pnpm web:env)
 web/public/config.json

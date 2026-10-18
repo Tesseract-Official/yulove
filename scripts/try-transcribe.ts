@@ -36,7 +36,8 @@ export interface Args {
 }
 
 export function parseArgs(argv: readonly string[]): Args {
-  const [imagePath, questionId, versionText, ...extra] = argv;
+  // A leading "--" (an extra one typed after the pnpm script name) is dropped.
+  const [imagePath, questionId, versionText, ...extra] = argv[0] === '--' ? argv.slice(1) : argv;
   const usage =
     'Usage: AWS_PROFILE=dsa-judge pnpm try:transcribe <imagePath> <questionId> [version]';
   if (!imagePath || !questionId || extra.length > 0) throw new Error(usage);

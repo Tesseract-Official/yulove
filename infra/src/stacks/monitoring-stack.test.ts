@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp, TEST_CONTEXT } from '../testing.js';
 import {
   FAILED_TO_GRADE_PER_HOUR,
+  API_5XX_PER_5_MINUTES,
   APP_ERRORS_PER_5_MINUTES,
   MAX_ALARMS_IN_APP,
   MONITORING_ALARM_COUNT,
@@ -46,9 +47,9 @@ describe('MonitoringStack topic', () => {
 });
 
 describe('MonitoringStack alarms', () => {
-  it('has exactly the five alarms', () => {
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 5);
-    expect(MONITORING_ALARM_COUNT).toBe(5);
+  it('has exactly the six alarms', () => {
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 6);
+    expect(MONITORING_ALARM_COUNT).toBe(6);
   });
 
   it.each([
@@ -85,6 +86,25 @@ describe('MonitoringStack alarms', () => {
       TreatMissingData: 'notBreaching',
     });
     expect(FAILED_TO_GRADE_PER_HOUR).toBe(20);
+  });
+
+  it('alarms on more than 5 API gateway 5xx responses in 5 minutes, for this API only', () => {
+    const alarm = alarmNamed('dsa-judge-api-5xx');
+    expect(alarm).toMatchObject({
+      Namespace: 'AWS/ApiGateway',
+      MetricName: '5xx',
+      Statistic: 'Sum',
+      Period: 300,
+      Threshold: API_5XX_PER_5_MINUTES,
+      ComparisonOperator: 'GreaterThanThreshold',
+      EvaluationPeriods: 1,
+      TreatMissingData: 'notBreaching',
+    });
+    expect(API_5XX_PER_5_MINUTES).toBe(5);
+    // Dimensioned by the API's id, so another API in the account is not counted.
+    const dimensions = alarm['Dimensions'] as Array<{ Name: string; Value: unknown }>;
+    expect(dimensions.map((d) => d.Name)).toEqual(['ApiId']);
+    expect(JSON.stringify(dimensions[0]?.Value)).toContain('Api');
   });
 
   it('alarms on more than 5 AppError metrics in 5 minutes, from this app only', () => {
@@ -125,7 +145,7 @@ describe('alarms in the whole app', () => {
     const count = (stack: Parameters<typeof Template.fromStack>[0]) =>
       Object.keys(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm')).length;
     const total = count(m as NonNullable<typeof m>) + count(worker as NonNullable<typeof worker>);
-    expect(total).toBe(7); // 5 here and the worker's 2 scaling alarms
+    expect(total).toBe(8); // 6 here and the worker's 2 scaling alarms
     expect(total).toBeLessThanOrEqual(MAX_ALARMS_IN_APP);
   });
 

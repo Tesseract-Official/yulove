@@ -74,7 +74,10 @@ describe('.gitignore', () => {
     .split('\n')
     .map((line) => line.trim());
 
-  it.each(['.env', '.env.*', 'cdk.out/', 'infra/cdk.context.json'])('ignores %s', (entry) => {
-    expect(ignore).toContain(entry);
-  });
+  it.each(['.env', '.env.*', 'cdk.out/', 'infra/cdk.context.json', 'transcription-compare-*.csv'])(
+    'ignores %s',
+    (entry) => {
+      expect(ignore).toContain(entry);
+    },
+  );
 });

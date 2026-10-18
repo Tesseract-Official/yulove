@@ -3,7 +3,7 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dyn
 import { normaliseEmail as normaliseIdentity, ROLES } from '@yulove/shared';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { parseFlags } from './args.js';
 
 const SUPER_ADMIN = ROLES[0];
 
@@ -96,14 +96,11 @@ export function describeOutcome(outcome: SeedOutcome, table: string): string {
 }
 
 async function main(argv: string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      table: { type: 'string' },
-      name: { type: 'string' },
-    },
-  });
+  const { values, positionals } = parseFlags(
+    argv,
+    { table: { type: 'string' }, name: { type: 'string' } },
+    true,
+  );
   const table = values.table ?? process.env['USERS_TABLE'];
   if (positionals.length === 0 || !table) {
     throw new Error(
