@@ -1,4 +1,4 @@
-import type { AnswerDetailResponse } from '@yulove/shared';
+import { answerFailureText, type AnswerDetailResponse } from '@yulove/shared';
 import { FAIL_REASON_TEXT, LANGUAGE_TEXT, VERDICT_TEXT } from './labels.js';
 import { Chip, Notice, StatusChip } from './ui.js';
 import { ZoomableImage } from './ZoomableImage.js';
@@ -135,15 +135,16 @@ export function AnswerDetail({
 
       {a.override ? (
         <Notice kind="info">
-          Score adjusted by admin to {a.override.score} (by {a.override.by},{' '}
-          {new Date(a.override.at).toLocaleString()}): {a.override.reason}
+          Score adjusted by {a.override.byRole === 'TEACHER' ? 'teacher' : 'admin'} to{' '}
+          {a.override.score} (by {a.override.by}, {new Date(a.override.at).toLocaleString()}):{' '}
+          {a.override.reason}
         </Notice>
       ) : null}
 
       {a.status === 'FAILED_TO_GRADE' ? (
         <Notice kind="error">
           {a.failReason ? FAIL_REASON_TEXT[a.failReason] : 'This answer could not be graded.'}
-          {a.failDetail ? ` ${a.failDetail}` : ''}
+          {a.failDetail ? ` ${answerFailureText(a.failDetail)}` : ''}
         </Notice>
       ) : null}
 

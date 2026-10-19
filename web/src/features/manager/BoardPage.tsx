@@ -1,7 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { BoardStudentRow, CellStatus, ExamBoardResponse, QuestionCell } from '@yulove/shared';
+import {
+  answerFailureText,
+  type BoardStudentRow,
+  type CellStatus,
+  type ExamBoardResponse,
+  type QuestionCell,
+} from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { errorMessage } from '../../api/errors.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
@@ -67,7 +73,7 @@ function Cell({
               ? FAIL_REASON_TEXT[cell.failReason]
               : 'This answer could not be graded.'}
           </p>
-          {cell.failDetail ? <p className="muted">{cell.failDetail}</p> : null}
+          {cell.failDetail ? <p className="muted">{answerFailureText(cell.failDetail)}</p> : null}
           <button
             type="button"
             className="button"

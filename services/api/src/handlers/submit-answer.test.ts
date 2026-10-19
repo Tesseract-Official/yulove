@@ -155,7 +155,7 @@ describe('POST /answers/submit', () => {
         attempt: 1,
         status: 'FAILED_TO_GRADE',
         failReason: 'WORKER_ERROR',
-        failDetail: 'Could not queue the answer, submit again',
+        failDetail: 'Could not queue the answer. Submit it again.',
       });
     });
 

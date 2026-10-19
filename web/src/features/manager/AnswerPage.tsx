@@ -4,7 +4,7 @@ import { useApi } from '../../api/ApiContext.js';
 import { ApiError, errorMessage } from '../../api/errors.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { keys } from '../common/hooks.js';
-import { AdminAnswerTools } from '../common/AdminAnswerTools.js';
+import { ScoreTools } from '../common/ScoreTools.js';
 import { AnswerDetail } from '../common/AnswerDetail.js';
 import { Notice, PageHeader } from '../common/ui.js';
 
@@ -100,7 +100,7 @@ export function AnswerPage({ section = 'manager' }: { section?: 'manager' | 'tea
       ) : null}
 
       <AnswerDetail answer={a} />
-      <AdminAnswerTools answer={a} />
+      <ScoreTools answer={a} />
     </section>
   );
 }

@@ -10,6 +10,7 @@ import {
   seedGradingWorld,
   TEACHER_A,
   TEACHER_B,
+  TEACHER_C,
 } from '../test-utils/answers.js';
 import { handler, IMAGE_LINK_SECONDS } from './get-answer.js';
 
@@ -106,6 +107,17 @@ describe('GET /answers/{examId}/{studentEmail}/{q}', () => {
     const { body } = await call(MANAGER);
     expect(body.score).toBe(9);
     expect(body.override).toMatchObject({ score: 9, reason: 'Misread' });
+  });
+
+  it.each([
+    ['the teacher who made the exam', TEACHER_A, true],
+    ['a super admin', 'super-admin@college.edu', true],
+    ['a teacher of the same batch who did not make the exam', TEACHER_C, false],
+    ['a batch manager of the batch', MANAGER, false],
+  ])('says whether %s may override: %s', async (_who, email, can) => {
+    const { status, body } = await call(email);
+    expect(status).toBe(200);
+    expect(body.canOverride).toBe(can);
   });
 
   it('shows 0 for an absent student, and says so', async () => {

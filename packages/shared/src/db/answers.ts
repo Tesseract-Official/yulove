@@ -2,6 +2,7 @@ import { GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { AnswerStatus, FailReason, Language } from '../enums.js';
 import { normaliseEmail } from '../identity.js';
 import { emitFailedToGrade } from '../metrics.js';
+import { endSentence } from '../sentences.js';
 import { ANSWERS_BY_EXAM_INDEX } from '../tables.js';
 import {
   answerIndexKeys,
@@ -222,7 +223,7 @@ export async function markFailed(
   failReason: FailReason,
   detail?: string,
 ): Promise<WriteOutcome> {
-  const text = detail?.trim();
+  const text = detail ? endSentence(detail) : undefined;
   const failDetail =
     text && text.length > MAX_FAIL_DETAIL ? `${text.slice(0, MAX_FAIL_DETAIL - 3)}...` : text;
   const outcome = await writeForAttempt(

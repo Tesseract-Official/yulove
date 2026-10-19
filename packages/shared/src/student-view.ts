@@ -48,7 +48,10 @@ export interface StudentQuestionView {
   testsTotal?: number;
   failedSmallTests: FailedSmallTest[];
   failedLargeTests: FailedLargeTest[];
-  adjustedByAdmin: boolean;
+  /** A teacher or a super admin set the score by hand. */
+  adjusted: boolean;
+  /** Who: shown as a word only, never a name or email. */
+  adjustedBy?: 'teacher' | 'admin';
   appeal?: StudentAppealView;
   /** Whether the student may raise an appeal on this question now. */
   canAppeal: boolean;
@@ -57,6 +60,7 @@ export interface StudentQuestionView {
 export const MESSAGES = {
   absent: 'Absent',
   adjusted: 'Score adjusted by admin',
+  adjustedByTeacher: 'Score adjusted by teacher',
   notGraded: 'Could not be graded — raise an appeal',
   inProgress: 'Still being graded',
   notSubmitted: 'No answer was submitted',
@@ -110,7 +114,7 @@ export function studentQuestionView(input: {
     messages: [],
     failedSmallTests: [],
     failedLargeTests: [],
-    adjustedByAdmin: false,
+    adjusted: false,
     canAppeal: false,
   };
   if (appeal) view.appeal = appealView(appeal);
@@ -120,8 +124,11 @@ export function studentQuestionView(input: {
 
   const noOpenAppeal = appeal?.status !== 'OPEN';
   if (answer.override) {
-    view.adjustedByAdmin = true;
-    view.messages.push(MESSAGES.adjusted);
+    // Overrides made before teachers could have no role: those were all made by an admin.
+    const byTeacher = answer.override.byRole === 'TEACHER';
+    view.adjusted = true;
+    view.adjustedBy = byTeacher ? 'teacher' : 'admin';
+    view.messages.push(byTeacher ? MESSAGES.adjustedByTeacher : MESSAGES.adjusted);
   }
 
   if (answer.status === 'FAILED_TO_GRADE') {

@@ -18,6 +18,7 @@ import { ResultsPage } from './features/teacher/ResultsPage.js';
 import { TeacherHome } from './features/teacher/TeacherHome.js';
 import { AppealDetailPage } from './features/appeals/AppealDetailPage.js';
 import { AppealsPage } from './features/appeals/AppealsPage.js';
+import { LegacyAppeals } from './features/appeals/LegacyAppeals.js';
 import { StudentExamPage } from './features/student/StudentExamPage.js';
 import { StudentExamsPage } from './features/student/StudentExamsPage.js';
 import { RequireSection } from './session/guards.js';
@@ -52,11 +53,8 @@ export function AppRoutes() {
           <Route path="students" element={<StudentsPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="board" element={<BoardPage />} />
-          <Route path="appeals" element={<AppealsPage section="manager" />} />
-          <Route
-            path="appeals/:examId/:appealId"
-            element={<AppealDetailPage section="manager" />}
-          />
+          <Route path="appeals" element={<LegacyAppeals />} />
+          <Route path="appeals/:examId/:appealId" element={<LegacyAppeals />} />
           <Route path="answer/:examId/:email/:q" element={<AnswerPage />} />
           <Route path="*" element={<Navigate to="/manager" replace />} />
         </Route>
@@ -70,11 +68,8 @@ export function AppRoutes() {
           <Route path="exams/new" element={<ExamPage />} />
           <Route path="exams/:id" element={<ExamPage />} />
           <Route path="results" element={<ResultsPage />} />
-          <Route path="appeals" element={<AppealsPage section="teacher" />} />
-          <Route
-            path="appeals/:examId/:appealId"
-            element={<AppealDetailPage section="teacher" />}
-          />
+          <Route path="appeals" element={<AppealsPage />} />
+          <Route path="appeals/:examId/:appealId" element={<AppealDetailPage />} />
           <Route path="answer/:examId/:email/:q" element={<AnswerPage section="teacher" />} />
           <Route path="*" element={<Navigate to="/teacher" replace />} />
         </Route>

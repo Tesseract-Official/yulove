@@ -258,12 +258,34 @@ describe('one exam', () => {
   it('says when the score was adjusted by an admin, without showing anything else about it', async () => {
     open(`/student/exams/${EXAM_ID}`, {
       'GET /me/exams/:id': exam([
-        studentQuestion({ score: 9, adjustedByAdmin: true, messages: ['Score adjusted by admin'] }),
+        studentQuestion({
+          score: 9,
+          adjusted: true,
+          adjustedBy: 'admin',
+          messages: ['Score adjusted by admin'],
+        }),
       ]),
     });
 
     expect(await screen.findByText('Score adjusted by admin')).toBeInTheDocument();
     expect(screen.getByText('9 / 10')).toBeInTheDocument();
+  });
+
+  it('says when a teacher adjusted the score, as an information line like the admin one', async () => {
+    open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': exam([
+        studentQuestion({
+          score: 9,
+          adjusted: true,
+          adjustedBy: 'teacher',
+          messages: ['Score adjusted by teacher'],
+        }),
+      ]),
+    });
+
+    const line = await screen.findByText('Score adjusted by teacher');
+    expect(line).toHaveClass('notice-info');
+    expect(screen.queryByText('Score adjusted by admin')).not.toBeInTheDocument();
   });
 
   it('explains when the exam cannot be found', async () => {

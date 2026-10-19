@@ -313,6 +313,7 @@ describe('viewing one answer', () => {
     ],
     score: 5,
     override: undefined,
+    canOverride: false,
   };
 
   it('links from the board and shows the photo, the transcription and the test results', async () => {

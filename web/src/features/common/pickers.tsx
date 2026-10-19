@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { ExamStatus } from '@yulove/shared';
+import type { ExamStatus, ExamSummary } from '@yulove/shared';
 import { errorMessage } from '../../api/errors.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { useBatches, useExams } from './hooks.js';
@@ -60,12 +60,15 @@ export function ExamSelect({
   value,
   onChange,
   statuses,
+  only,
   emptyHint,
 }: {
   batchId: string;
   value: string;
   onChange: (examId: string) => void;
   statuses: readonly ExamStatus[];
+  /** Keeps only the exams this returns true for (for example, the ones the caller made). */
+  only?: (exam: ExamSummary) => boolean;
   /** Said when the batch has no exam to choose from. */
   emptyHint: string;
 }) {
@@ -82,7 +85,9 @@ export function ExamSelect({
     );
   }
 
-  const choices = exams.data.filter((exam) => statuses.includes(exam.status));
+  const choices = exams.data.filter(
+    (exam) => statuses.includes(exam.status) && (only?.(exam) ?? true),
+  );
   if (choices.length === 0)
     return <EmptyState title="No exams to choose from">{emptyHint}</EmptyState>;
 

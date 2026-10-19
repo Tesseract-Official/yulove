@@ -170,8 +170,14 @@ describe('POST /appeals', () => {
     it.each([
       ['a batch manager', MANAGER],
       ['a teacher', TEACHER_A],
-    ])('for %s with 403', async (_who, email) => {
+      ['a teacher of another batch', 'teacher-b@college.edu'],
+    ])('for %s with 403 (only students raise appeals)', async (_who, email) => {
       expect((await call(email)).status).toBe(403);
+      expect(appeals()).toHaveLength(0);
+    });
+
+    it('for a super admin, who is not a student and has no exam of their own (nothing is created)', async () => {
+      expect((await call('super-admin@college.edu')).status).toBe(404);
       expect(appeals()).toHaveLength(0);
     });
 

@@ -101,17 +101,15 @@ function open(
   return api;
 }
 
-const queue = (section: 'manager' | 'teacher' = 'manager') =>
-  `/${section}/appeals?batch=A&exam=${EXAM_ID}`;
-const detail = (section: 'manager' | 'teacher' = 'manager', id = 'ap1') =>
-  `/${section}/appeals/${EXAM_ID}/${id}?batch=A`;
+const queue = () => `/teacher/appeals?batch=A&exam=${EXAM_ID}`;
+const detail = (id = 'ap1') => `/teacher/appeals/${EXAM_ID}/${id}?batch=A`;
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.unstubAllGlobals());
 
 describe('the appeal queue', () => {
   it('lists the appeals with every open one first, then the rest newest first', async () => {
-    open('BATCH_MANAGER', queue());
+    open('TEACHER', queue());
 
     const list = await screen.findByRole('list', { name: 'Appeals' });
     const names = within(list)
@@ -125,7 +123,7 @@ describe('the appeal queue', () => {
   });
 
   it('shows who appealed, the question, the start of the message, the status and the date', async () => {
-    open('BATCH_MANAGER', queue());
+    open('TEACHER', queue());
 
     const asha = (await screen.findByText(/R1 · Asha Rao · Question 1/)).closest(
       'li',
@@ -133,7 +131,7 @@ describe('the appeal queue', () => {
     expect(within(asha).getByText(/My loop is correct/)).toBeInTheDocument();
     expect(
       within(asha).getByRole('link', { name: /Open the appeal from Asha Rao on question 1/ }),
-    ).toHaveAttribute('href', `/manager/appeals/${EXAM_ID}/ap1?batch=A`);
+    ).toHaveAttribute('href', `/teacher/appeals/${EXAM_ID}/ap1?batch=A`);
     const ben = screen.getByText(/R2 · Ben Rai/).closest('li') as HTMLElement;
     expect(within(ben).getByText('Closed')).toBeInTheDocument();
     const chitra = screen.getByText(/R3 · Chitra Nair/).closest('li') as HTMLElement;
@@ -141,7 +139,7 @@ describe('the appeal queue', () => {
   });
 
   it('counts the appeals by status', async () => {
-    open('BATCH_MANAGER', queue());
+    open('TEACHER', queue());
 
     expect(await screen.findByText('2 open appeals')).toBeInTheDocument();
     expect(screen.getByText(/1 graded again · 1 closed/)).toBeInTheDocument();
@@ -152,7 +150,7 @@ describe('the appeal queue', () => {
     ['RERUN', ['Chitra Nair']],
     ['CLOSED', ['Ben Rai']],
   ] as const)('can show only the appeals that are %s', async (status, names) => {
-    open('BATCH_MANAGER', queue());
+    open('TEACHER', queue());
     await screen.findByRole('list', { name: 'Appeals' });
 
     await userEvent.selectOptions(screen.getByLabelText('Show'), status);
@@ -165,7 +163,7 @@ describe('the appeal queue', () => {
   });
 
   it('refreshes when asked', async () => {
-    const api = open('BATCH_MANAGER', queue());
+    const api = open('TEACHER', queue());
     await screen.findByRole('list', { name: 'Appeals' });
     expect(api.callsTo('GET /appeals')).toHaveLength(1);
 
@@ -176,7 +174,7 @@ describe('the appeal queue', () => {
   });
 
   it('offers only published exams, and says when there are none', async () => {
-    open('BATCH_MANAGER', '/manager/appeals');
+    open('TEACHER', '/teacher/appeals');
 
     const select = await screen.findByLabelText('Exam');
     expect(within(select).queryByRole('option', { name: /Not published/ })).not.toBeInTheDocument();
@@ -184,14 +182,14 @@ describe('the appeal queue', () => {
   });
 
   it('explains when nobody has appealed, and when a request fails', async () => {
-    open('BATCH_MANAGER', queue(), { 'GET /appeals': { examId: EXAM_ID, appeals: [] } });
+    open('TEACHER', queue(), { 'GET /appeals': { examId: EXAM_ID, appeals: [] } });
     expect(
       await screen.findByText('Nobody has appealed anything in this exam.'),
     ).toBeInTheDocument();
   });
 
   it('shows the API’s refusal in plain words', async () => {
-    open('TEACHER', queue('teacher'), {
+    open('TEACHER', queue(), {
       'GET /appeals': apiError(403, 'FORBIDDEN', 'You do not have access to this batch'),
     });
 
@@ -199,8 +197,8 @@ describe('the appeal queue', () => {
     expect(screen.getByText(/You don't have access to this/)).toBeInTheDocument();
   });
 
-  it('works for teachers too, with links into their own section', async () => {
-    open('TEACHER', queue('teacher'));
+  it('links into the teacher’s own section', async () => {
+    open('TEACHER', queue());
 
     expect(
       await screen.findByRole('link', { name: /Open the appeal from Asha Rao on question 1/ }),
@@ -210,7 +208,7 @@ describe('the appeal queue', () => {
 
 describe('an appeal', () => {
   it('shows what the student wrote, and the answer with the photo, transcription, fixes, language, complexity and verdicts', async () => {
-    open('BATCH_MANAGER', detail());
+    open('TEACHER', detail());
 
     expect(
       await screen.findByText(/My loop is correct, the reader misread the bound\./),
@@ -229,7 +227,7 @@ describe('an appeal', () => {
   });
 
   it('shows the raw and corrected code side by side', async () => {
-    open('BATCH_MANAGER', detail());
+    open('TEACHER', detail());
 
     const raw = (await screen.findByText('As written')).closest('.side-by-side');
     expect(raw).not.toBeNull();
@@ -237,7 +235,7 @@ describe('an appeal', () => {
   });
 
   it('has a photo that can be zoomed and fitted back', async () => {
-    open('BATCH_MANAGER', detail());
+    open('TEACHER', detail());
     const photo = await screen.findByRole('img', { name: 'Answer photo for question 1' });
     expect(photo).toHaveStyle({ width: '100%' });
     const zoomOut = screen.getByRole('button', { name: 'Zoom out' });
@@ -256,23 +254,23 @@ describe('an appeal', () => {
   });
 
   it('says when the appeal cannot be found', async () => {
-    open('BATCH_MANAGER', detail('manager', 'nope'));
+    open('TEACHER', detail('nope'));
 
     expect(await screen.findByText('Appeal not found')).toBeInTheDocument();
   });
 
   it('goes back to the queue of the same exam', async () => {
-    open('BATCH_MANAGER', detail());
+    open('TEACHER', detail());
 
     expect(await screen.findByRole('link', { name: /Back to the appeals/ })).toHaveAttribute(
       'href',
-      `/manager/appeals?exam=${EXAM_ID}&batch=A`,
+      `/teacher/appeals?exam=${EXAM_ID}&batch=A`,
     );
   });
 
   it('shows the answer’s new status after a re-grade, when Refresh is pressed', async () => {
     let status: 'QUEUED' | 'GRADED' = 'QUEUED';
-    const api = open('BATCH_MANAGER', detail(), {
+    const api = open('TEACHER', detail(), {
       'GET /answers/:examId/:studentEmail/:q': () => answerDetail({ status }),
     });
     expect(await screen.findByText('Waiting')).toBeInTheDocument();
@@ -287,7 +285,7 @@ describe('an appeal', () => {
 
 describe('what a reviewer can do', () => {
   it('re-grades as is: PUT with RERUN, and no upload or submit', async () => {
-    const api = open('BATCH_MANAGER', detail(), {
+    const api = open('TEACHER', detail(), {
       'PUT /appeals/:id': { appeal: { ...OPEN, status: 'RERUN' }, attempt: 2 },
     });
 
@@ -303,7 +301,7 @@ describe('what a reviewer can do', () => {
   });
 
   it('can add a note when re-grading', async () => {
-    const api = open('BATCH_MANAGER', detail(), {
+    const api = open('TEACHER', detail(), {
       'PUT /appeals/:id': { appeal: { ...OPEN, status: 'RERUN' }, attempt: 2 },
     });
 
@@ -321,7 +319,7 @@ describe('what a reviewer can do', () => {
   });
 
   it('closes only with a note', async () => {
-    const api = open('BATCH_MANAGER', detail(), {
+    const api = open('TEACHER', detail(), {
       'PUT /appeals/:id': { appeal: { ...OPEN, status: 'CLOSED', note: 'Correct as graded.' } },
     });
 
@@ -342,7 +340,7 @@ describe('what a reviewer can do', () => {
   });
 
   it('uploads a better photo, then re-grades it: upload link, S3, then RERUN, and never submit', async () => {
-    const api = open('BATCH_MANAGER', detail(), {
+    const api = open('SUPER_ADMIN', detail(), {
       'POST /answers/upload-url': PRESIGNED,
       'PUT /appeals/:id': { appeal: { ...OPEN, status: 'RERUN' }, attempt: 2 },
     });
@@ -381,7 +379,7 @@ describe('what a reviewer can do', () => {
   });
 
   it('keeps the appeal open and says why when the upload fails', async () => {
-    const api = open('BATCH_MANAGER', detail(), {
+    const api = open('SUPER_ADMIN', detail(), {
       'POST /answers/upload-url': apiError(
         409,
         'CONFLICT',
@@ -405,7 +403,7 @@ describe('what a reviewer can do', () => {
   });
 
   it('shows the API’s message if the appeal was handled by someone else meanwhile', async () => {
-    open('BATCH_MANAGER', detail(), {
+    open('TEACHER', detail(), {
       'PUT /appeals/:id': apiError(409, 'CONFLICT', 'This appeal is already closed'),
     });
 
@@ -417,7 +415,7 @@ describe('what a reviewer can do', () => {
   });
 
   it('shows the outcome, and no actions, once an appeal is handled', async () => {
-    open('BATCH_MANAGER', detail('manager', 'ap2'), {
+    open('TEACHER', detail('ap2'), {
       'GET /answers/:examId/:studentEmail/:q': answerDetail({
         studentEmail: 's2@college.edu',
         questionNumber: 2,
@@ -434,7 +432,7 @@ describe('what a reviewer can do', () => {
 
 describe('a teacher reviewing an appeal', () => {
   it('can re-grade and close, but is not offered a photo upload', async () => {
-    const api = open('TEACHER', detail('teacher'), {
+    const api = open('TEACHER', detail(), {
       'PUT /appeals/:id': { appeal: { ...OPEN, status: 'RERUN' }, attempt: 2 },
     });
 
@@ -451,7 +449,7 @@ describe('a teacher reviewing an appeal', () => {
   });
 
   it('goes back to the teacher’s own queue', async () => {
-    open('TEACHER', detail('teacher'));
+    open('TEACHER', detail());
 
     expect(await screen.findByRole('link', { name: /Back to the appeals/ })).toHaveAttribute(
       'href',

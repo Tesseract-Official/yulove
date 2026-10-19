@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeOidc, fakeUser, jsonResponse, meFor, renderApp } from '../../test/helpers.js';
 import { EXAM_ID, answerDetail, auditEntry } from '../../test/fixtures.js';
 import { apiError, mockApi, type Route } from '../../test/mockApi.js';
-import { validateOverride } from './AdminAnswerTools.js';
+import { validateOverride } from './ScoreTools.js';
 
 const ROUTE = `/manager/answer/${EXAM_ID}/s1%40college.edu/1?batch=A`;
 
@@ -35,36 +35,86 @@ const dialog = () => screen.getByRole('dialog', { name: 'Override score' });
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('who sees the admin tools', () => {
-  it.each(['BATCH_MANAGER', 'TEACHER'] as const)(
-    'does not show them to a %s, and never asks for the audit history',
-    async (role) => {
-      const api = open(role);
+describe('who sees the score tools', () => {
+  it('does not show them to a batch manager, and never asks for the history or overrides', async () => {
+    // The API tells a batch manager canOverride is false.
+    const api = open('BATCH_MANAGER', {
+      'GET /answers/:examId/:studentEmail/:q': answerDetail({ canOverride: false }),
+    });
 
-      await screen.findByText(/marks$/);
-      expect(screen.queryByRole('button', { name: 'Override score' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Audit history' })).not.toBeInTheDocument();
-      expect(screen.queryByText('Admin tools')).not.toBeInTheDocument();
-      expect(api.callsTo('GET /answers/:examId/:studentEmail/:q/audit')).toHaveLength(0);
-      expect(api.callsTo(OVERRIDE_ROUTE)).toHaveLength(0);
-    },
-  );
+    await screen.findByText(/marks$/);
+    expect(screen.queryByRole('button', { name: 'Override score' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Audit history' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Score tools')).not.toBeInTheDocument();
+    expect(api.callsTo('GET /answers/:examId/:studentEmail/:q/audit')).toHaveLength(0);
+    expect(api.callsTo(OVERRIDE_ROUTE)).toHaveLength(0);
+  });
 
-  it('shows them to a super admin', async () => {
+  it('does not show them to a teacher whose scope does not include the exam', async () => {
+    const api = open('TEACHER', {
+      'GET /answers/:examId/:studentEmail/:q': answerDetail({ canOverride: false }),
+    });
+
+    await screen.findByText(/marks$/);
+    expect(screen.queryByRole('button', { name: 'Override score' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Score tools')).not.toBeInTheDocument();
+    expect(api.callsTo(OVERRIDE_ROUTE)).toHaveLength(0);
+  });
+
+  it('shows Override score, but not the history, to a teacher in scope', async () => {
+    const api = open('TEACHER');
+
+    expect(await screen.findByRole('button', { name: 'Override score' })).toBeInTheDocument();
+    expect(screen.getByText('Score tools')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Audit history' })).not.toBeInTheDocument();
+    expect(api.callsTo('GET /answers/:examId/:studentEmail/:q/audit')).toHaveLength(0);
+  });
+
+  it('shows both to a super admin', async () => {
     open('SUPER_ADMIN');
 
     expect(await screen.findByRole('button', { name: 'Override score' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Audit history' })).toBeInTheDocument();
   });
 
-  it('shows an existing override to everyone who looks at the answer', async () => {
-    open('TEACHER', {
+  it('lets a teacher in scope set an override with a reason', async () => {
+    const api = open('TEACHER', {
+      [OVERRIDE_ROUTE]: {
+        examId: EXAM_ID,
+        studentEmail: 's1@college.edu',
+        questionNumber: 1,
+        score: 8,
+        override: {
+          score: 8,
+          reason: 'Rechecked',
+          by: 'tina@college.edu',
+          byRole: 'TEACHER',
+          at: '2026-10-26T09:00:00.000Z',
+        },
+        totalScore: 20,
+        maxScore: 30,
+      },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Override score' }));
+    await userEvent.clear(screen.getByLabelText(/New score/));
+    await userEvent.type(screen.getByLabelText(/New score/), '8');
+    await userEvent.type(screen.getByLabelText('Reason'), 'Rechecked');
+    await userEvent.click(within(dialog()).getByRole('button', { name: 'Save score' }));
+
+    expect(await screen.findByText('The score is now 8 out of 10.')).toBeInTheDocument();
+    expect(api.callsTo(OVERRIDE_ROUTE)[0]?.body).toEqual({ score: 8, reason: 'Rechecked' });
+  });
+
+  it('shows an existing override to everyone who looks at the answer, naming who made it by role', async () => {
+    open('BATCH_MANAGER', {
       'GET /answers/:examId/:studentEmail/:q': answerDetail({
+        canOverride: false,
         score: 9,
         override: {
           score: 9,
           reason: 'Rechecked by hand',
           by: 'admin@college.edu',
+          byRole: 'SUPER_ADMIN',
           at: '2026-10-26T09:00:00.000Z',
         },
       }),
@@ -72,6 +122,62 @@ describe('who sees the admin tools', () => {
 
     expect(await screen.findByText(/Score adjusted by admin to 9/)).toBeInTheDocument();
     expect(screen.getByText(/Rechecked by hand/)).toBeInTheDocument();
+  });
+
+  it('says "adjusted by teacher" for a teacher’s override', async () => {
+    open('TEACHER', {
+      'GET /answers/:examId/:studentEmail/:q': answerDetail({
+        score: 9,
+        override: {
+          score: 9,
+          reason: 'Checked the paper',
+          by: 'tina@college.edu',
+          byRole: 'TEACHER',
+          at: '2026-10-26T09:00:00.000Z',
+        },
+      }),
+    });
+
+    expect(
+      await screen.findByText(/Score adjusted by teacher to 9 \(by tina@college.edu/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('the score history', () => {
+  it('shows each change with the email and role of who made it, for a super admin', async () => {
+    open('SUPER_ADMIN', {
+      'GET /answers/:examId/:studentEmail/:q/audit': {
+        examId: EXAM_ID,
+        studentEmail: 's1@college.edu',
+        questionNumber: 1,
+        entries: [
+          auditEntry({
+            actor: 'admin@college.edu',
+            actorRole: 'SUPER_ADMIN',
+            timestamp: '2026-10-27T09:00:00.000Z',
+            reason: 'Second',
+          }),
+          auditEntry({
+            actor: 'tina@college.edu',
+            actorRole: 'TEACHER',
+            timestamp: '2026-10-26T09:00:00.000Z',
+            reason: 'First',
+          }),
+          auditEntry({
+            actor: 'old@college.edu',
+            timestamp: '2026-10-25T09:00:00.000Z',
+            reason: 'Before roles were recorded',
+          }),
+        ],
+      },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Audit history' }));
+
+    const list = await screen.findByRole('list', { name: 'Audit history' });
+    expect(within(list).getByText(/By tina@college.edu \(Teacher\)/)).toBeInTheDocument();
+    expect(within(list).getByText(/By admin@college.edu \(Super admin\)/)).toBeInTheDocument();
+    expect(within(list).getByText(/By old@college.edu ·/)).toBeInTheDocument();
   });
 });
 

@@ -10,8 +10,11 @@ import {
   answerItem,
   examStudentRow,
   MANAGER,
+  MANAGER_B,
   seedGradingWorld,
   TEACHER_A,
+  TEACHER_B,
+  TEACHER_C,
 } from '../test-utils/answers.js';
 import { handler as audit } from './get-answer-audit.js';
 import { handler as rerun } from './rerun-answer.js';
@@ -66,6 +69,7 @@ describe('PUT /answers/{examId}/{studentEmail}/{q}/override', () => {
       score: 8,
       reason: 'Student explained at the viva',
       by: ADMIN,
+      byRole: 'SUPER_ADMIN',
     });
     expect(Date.parse(answer()?.override?.at ?? '')).not.toBeNaN();
     expect(answer()?.score).toBe(5); // the formula score is not touched
@@ -83,6 +87,7 @@ describe('PUT /answers/{examId}/{studentEmail}/{q}/override', () => {
     expect(entries()[0]).toMatchObject({
       entityKey: `answer#${EXAM_ID}#${S1}#1`,
       actor: ADMIN,
+      actorRole: 'SUPER_ADMIN',
       action: 'OVERRIDE_SCORE',
       reason: 'Misread by Gemini',
       before: { override: null, displayedScore: 5 },
@@ -241,15 +246,99 @@ describe('PUT /answers/{examId}/{studentEmail}/{q}/override', () => {
     });
   });
 
-  describe('is for super admins only', () => {
+  describe('who may override', () => {
     it.each([
-      ['a teacher', TEACHER_A],
-      ['a batch manager', MANAGER],
       ['a student', S1],
+      ['a batch manager of the exam’s batch', MANAGER],
+      ['a batch manager of another batch', MANAGER_B],
+      ['a teacher of the same batch who did not make the exam', TEACHER_C],
+      ['a teacher of another batch', TEACHER_B],
     ])('refuses %s with 403, changing nothing', async (_who, email) => {
       expect((await call(email, { score: 8, reason: 'r' })).status).toBe(403);
+      expect((await call(email, { score: null, reason: 'r' })).status).toBe(403);
       expect(answer()).not.toHaveProperty('override');
       expect(entries()).toHaveLength(0);
+      expect(row()).toBeUndefined(); // no total was worked out
+    });
+
+    it('refuses a teacher who made the exam but has since been taken off its batch', async () => {
+      db.users.get(TEACHER_A)!.batchIds = ['B'];
+      expect((await call(TEACHER_A, { score: 8, reason: 'r' })).status).toBe(403);
+      expect(answer()).not.toHaveProperty('override');
+    });
+
+    it.each([
+      ['the teacher who made the exam', TEACHER_A, 'TEACHER'],
+      ['a super admin', ADMIN, 'SUPER_ADMIN'],
+    ] as const)('lets %s set and clear an override', async (_who, email, role) => {
+      const set = await call(email, { score: 8, reason: 'Viva' });
+      expect(set.status).toBe(200);
+      expect(answer()?.override).toMatchObject({ score: 8, by: email, byRole: role });
+
+      expect((await call(email, { score: null, reason: 'Undone' })).status).toBe(200);
+      expect(answer()).not.toHaveProperty('override');
+    });
+  });
+
+  describe('a teacher’s override', () => {
+    it('still needs a reason, and keeps the 409 for an absent student and the marks limit', async () => {
+      expect((await call(TEACHER_A, { score: 8 })).status).toBe(422);
+      expect((await call(TEACHER_A, { score: 8, reason: '  ' })).status).toBe(422);
+      expect((await call(TEACHER_A, { score: 11, reason: 'r' })).status).toBe(422);
+      db.put('ExamStudents', examStudentRow(S1, { absent: true }));
+      expect((await call(TEACHER_A, { score: 8, reason: 'r' })).status).toBe(409);
+      expect(answer()).not.toHaveProperty('override');
+    });
+
+    it('writes an audit entry with who did it and their role, and the usual before and after', async () => {
+      await call(TEACHER_A, { score: 7, reason: 'Checked the paper' });
+
+      expect(entries()).toHaveLength(1);
+      expect(entries()[0]).toMatchObject({
+        entityKey: `answer#${EXAM_ID}#${S1}#1`,
+        actor: TEACHER_A,
+        actorRole: 'TEACHER',
+        action: 'OVERRIDE_SCORE',
+        reason: 'Checked the paper',
+        before: { override: null, displayedScore: 5 },
+        after: { override: 7, displayedScore: 7 },
+      });
+      // The wrapper only audits super admins' requests: a teacher gets the entry above, not a second one.
+      expect(
+        db.all<AuditLogItem>('AuditLog').filter((e) => e.entityKey.startsWith('request#')),
+      ).toHaveLength(0);
+    });
+
+    it('recomputes the total and keeps the formula score, as for a super admin', async () => {
+      await call(TEACHER_A, { score: 10, reason: 'Full marks' });
+      expect(row()).toMatchObject({ totalScore: 12.5, maxScore: 15 });
+      expect(answer()?.score).toBe(5);
+    });
+
+    it('keeps the history when a different person overrides it later', async () => {
+      await call(TEACHER_A, { score: 8, reason: 'First' });
+      await call(ADMIN, { score: 6, reason: 'Second look' });
+
+      expect(entries().map((e) => [e.actor, e.actorRole, e.reason])).toEqual([
+        [TEACHER_A, 'TEACHER', 'First'],
+        [ADMIN, 'SUPER_ADMIN', 'Second look'],
+      ]);
+      expect(entries()[1]).toMatchObject({ before: { override: 8 }, after: { override: 6 } });
+    });
+
+    it('survives a re-run, like any override', async () => {
+      await call(TEACHER_A, { score: 9, reason: 'Held at viva' });
+      const result = await invoke(
+        rerun,
+        makeEvent({
+          method: 'POST',
+          path: '/x',
+          email: MANAGER,
+          pathParameters: { examId: EXAM_ID, studentEmail: S1, q: '1' },
+        }),
+      );
+      expect(result.status).toBe(200);
+      expect(answer()).toMatchObject({ attempt: 2, override: { score: 9, byRole: 'TEACHER' } });
     });
   });
 
@@ -301,6 +390,20 @@ describe('GET /answers/{examId}/{studentEmail}/{q}/audit', () => {
       after: { override: null },
     });
     expect(body.entries[2]).toMatchObject({ action: 'OVERRIDE_SCORE', after: { override: 8 } });
+  });
+
+  it('names the role of each person who changed the score', async () => {
+    await call(TEACHER_A, { score: 8, reason: 'By the teacher' });
+    await call(ADMIN, { score: 6, reason: 'By a founder' });
+
+    const { body } = await history(ADMIN);
+
+    expect(
+      body.entries.map((e: { actor: string; actorRole: string }) => [e.actor, e.actorRole]),
+    ).toEqual([
+      [ADMIN, 'SUPER_ADMIN'],
+      [TEACHER_A, 'TEACHER'],
+    ]);
   });
 
   it('is empty for an answer nobody changed, and 404 for one that does not exist', async () => {

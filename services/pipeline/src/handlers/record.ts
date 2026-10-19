@@ -65,7 +65,7 @@ async function recordAnswer(msg: AnswerResult): Promise<RecordOutcome> {
 
   const exam = await examsDb.getExam(msg.examId);
   if (!exam) {
-    await answersDb.markFailed(key, msg.attempt, 'WORKER_ERROR', 'The exam no longer exists');
+    await answersDb.markFailed(key, msg.attempt, 'WORKER_ERROR', 'The exam no longer exists.');
     return { outcome: 'ignored', reason: 'exam not found' };
   }
 
@@ -77,7 +77,12 @@ async function recordAnswer(msg: AnswerResult): Promise<RecordOutcome> {
   } else {
     const ref = exam.questions.find((q) => q.number === msg.questionNumber);
     if (!ref) {
-      await answersDb.markFailed(key, msg.attempt, 'WORKER_ERROR', 'The exam has no such question');
+      await answersDb.markFailed(
+        key,
+        msg.attempt,
+        'WORKER_ERROR',
+        'The exam has no such question.',
+      );
       return { outcome: 'ignored', reason: 'question not in exam' };
     }
     const testsPassed = countPassed(msg.verdicts);
@@ -174,7 +179,7 @@ async function giveUp(msg: ResultMsg, error: unknown): Promise<void> {
         },
         msg.attempt,
         'WORKER_ERROR',
-        'Could not record the result, re-run',
+        'Could not record the result. Press Grade again.',
       );
     } else {
       await questionsDb.markGenerationFailed(

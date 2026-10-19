@@ -146,17 +146,21 @@ async function transcribeOne(
 
   const question = await questionsDb.getQuestion(msg.questionId, msg.version);
   if (!question) {
-    return failAnswer(msg, 'WORKER_ERROR', `Question ${msg.questionId} v${msg.version} not found`);
+    return failAnswer(
+      msg,
+      'WORKER_ERROR',
+      `Question ${msg.questionId} v${msg.version} was not found.`,
+    );
   }
   if (!question.signature || question.testStatus !== 'APPROVED') {
-    return failAnswer(msg, 'WORKER_ERROR', 'The question has no approved tests');
+    return failAnswer(msg, 'WORKER_ERROR', 'The question has no approved tests.');
   }
   if (!answer.imageKey) {
-    return failAnswer(msg, 'WORKER_ERROR', 'No photo is stored for this answer');
+    return failAnswer(msg, 'WORKER_ERROR', 'No photo is stored for this answer.');
   }
   const image = await readImage(requireEnv(BUCKET_ENV), answer.imageKey);
   if (!image || image.length === 0) {
-    return failAnswer(msg, 'WORKER_ERROR', 'The photo could not be found; upload it again');
+    return failAnswer(msg, 'WORKER_ERROR', 'The photo could not be found. Upload it again.');
   }
 
   const prompt = buildTranscribePrompt(deps.prompt(), question, deps.driversGuide());
@@ -248,8 +252,8 @@ async function transcribeOne(
  * The one exception is a busy Gemini (429, 5xx, timeouts that outlast the in-call retries): the
  * handler counts the try on the answer and throws, so the message comes back later. The trigger
  * must not report partial batch failures (they are off), so a thrown error returns the whole,
- * one-message batch. After the third busy try the answer is failed as "Transcription service busy,
- * re-run".
+ * one-message batch. After the third busy try the answer is failed as "Gemini is busy, so this answer could
+ * not be read" (BUSY_MESSAGE).
  */
 export function createHandler(overrides: Partial<Deps> = {}) {
   const deps: Deps = { ...defaultDeps, ...overrides };

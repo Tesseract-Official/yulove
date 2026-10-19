@@ -97,8 +97,13 @@ describe('writes guarded by the generation round', () => {
     );
     expect(stored()).toMatchObject({
       testStatus: 'GENERATION_FAILED',
-      testFailure: 'Gemini returned 6 small inputs',
+      testFailure: 'Gemini returned 6 small inputs.',
     });
+  });
+
+  it('markGenerationFailed keeps a full stop that is already there', async () => {
+    await markGenerationFailed('q1', 1, 2, 'Gemini is busy. Try again.');
+    expect(stored()?.testFailure).toBe('Gemini is busy. Try again.');
   });
 
   it('advanceGeneration moves to the next round and counts a replacement, or reports stale', async () => {

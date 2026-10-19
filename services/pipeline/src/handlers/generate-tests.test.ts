@@ -675,6 +675,9 @@ describe('a busy Gemini', () => {
       const result = await handler(new FakeGemini(busy()()))(generateEvent);
 
       expect(MAX_BUSY_TRIES).toBe(3);
+      expect(BUSY_REASON).toBe(
+        'The tests could not be made because Gemini is busy. Wait a minute, then press Generate tests again.',
+      );
       expect(result).toEqual({ outcome: 'failed', reason: BUSY_REASON });
       expect(stored()).toMatchObject({ testStatus: 'GENERATION_FAILED', testFailure: BUSY_REASON });
       expect(stored()).not.toHaveProperty('testGenTries');

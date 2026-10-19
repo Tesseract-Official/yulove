@@ -11,7 +11,7 @@ import {
 } from '@yulove/shared';
 import { answersDb, examStudentsDb, requireUser } from '@yulove/shared/server';
 import { requiredEnv } from '../lib/answers.js';
-import { loadExamInBatch } from '../lib/exams.js';
+import { loadExamInBatch, mayManageExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 export const IMAGE_LINK_SECONDS = 15 * 60;
@@ -79,6 +79,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     verdicts: answer.verdicts ?? [],
     score: computeQuestionScore(ref.marks, answer, absent),
     override: answer.override,
+    canOverride: mayManageExam(ctx, exam),
   };
   return { status: 200, body };
 }

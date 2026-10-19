@@ -296,7 +296,7 @@ export function studentQuestion(extra: Partial<StudentQuestionView> = {}): Stude
     testsTotal: 10,
     failedSmallTests: [],
     failedLargeTests: [],
-    adjustedByAdmin: false,
+    adjusted: false,
     canAppeal: true,
     ...extra,
   };
@@ -360,6 +360,7 @@ export function answerDetail(extra: Partial<AnswerDetailResponse> = {}): AnswerD
     ],
     score: 7,
     override: undefined,
+    canOverride: true,
     ...extra,
   };
 }

@@ -259,13 +259,15 @@ describe('transcribeImage', () => {
     expect(result).toMatchObject({ calls: 2, verdict: { ok: true } });
   });
 
-  it('says "Transcription service busy, re-run" when 429 never clears', async () => {
+  it('says the busy sentence when 429 never clears', async () => {
     const gemini = new Scripted([apiError(429), apiError(429), apiError(429), apiError(429)]);
     const result = await run(gemini);
 
     expect(result.calls).toBe(4);
     expect(result.verdict).toEqual({ ok: false, failReason: 'GEMINI_ERROR', detail: BUSY_MESSAGE });
-    expect(BUSY_MESSAGE).toBe('Transcription service busy, re-run');
+    expect(BUSY_MESSAGE).toBe(
+      'Gemini is busy, so this answer could not be read. Wait a minute, then press Grade again.',
+    );
   });
 
   it('does not retry a 400', async () => {

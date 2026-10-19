@@ -7,6 +7,8 @@ export const MANAGER = 'batch-manager@college.edu';
 export const TEACHER_A = 'teacher@college.edu';
 export const MANAGER_B = 'manager-b@college.edu';
 export const TEACHER_B = 'teacher-b@college.edu';
+/** A teacher of the exam's batch (A) who did not make the exam: not in scope for appeals or overrides. */
+export const TEACHER_C = 'teacher-c@college.edu';
 
 /** A graded answer: 5 of 10 tests on question 1 (10 marks) is a score of 5. */
 export function answerItem(
@@ -51,4 +53,5 @@ export function seedGradingWorld(db: FakeDb): void {
   db.put('Exams', examItem({ status: 'READY' }));
   db.addUser(userOf('BATCH_MANAGER', { email: MANAGER_B, batchIds: ['B'] }));
   db.addUser(userOf('TEACHER', { email: TEACHER_B, batchIds: ['B'] }));
+  db.addUser(userOf('TEACHER', { email: TEACHER_C, batchIds: ['A'] }));
 }

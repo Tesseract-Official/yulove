@@ -30,12 +30,12 @@ Four roles, each checked on every API call; a user's role comes from the `Users`
 
 | Role | Created by | Can do |
 | --- | --- | --- |
-| Super admin (founders) | Seeded at deploy from `superAdminEmails` in `infra/cdk.json` (college or personal Gmail addresses) | Everything below, on every batch; create teacher and batch-manager accounts and batches; assign teachers and batch managers to batches; override any score (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log |
-| Teacher | Super admin | Assigned to batches by a super admin; create and edit their own questions; generate, review and approve test cases; create and edit exams for their batches from their own approved questions, with per-question marks; generate the PDF of exams they created; download the PDF of any exam of their batches; see the status board, each student's scores by name and every answer of their batches' exams; review appeals and re-run grading |
-| Batch manager | Super admin | Assigned to one or more batches; upload the student CSV; upload one cropped photo per student per question; mark a student absent; see the status board and answers; download the exam PDF; publish results; review appeals and re-run grading |
+| Super admin (founders) | Seeded at deploy from `superAdminEmails` in `infra/cdk.json` (college or personal Gmail addresses) | Everything below, on every batch; create teacher and batch-manager accounts and batches; assign teachers and batch managers to batches; override any score and handle any appeal (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log |
+| Teacher | Super admin | Assigned to batches by a super admin; create and edit their own questions; generate, review and approve test cases; create and edit exams for their batches from their own approved questions, with per-question marks; generate the PDF of exams they created; download the PDF of any exam of their batches; see the status board, each student's scores by name and every answer of their batches' exams; re-run grading; **handle appeals** and **override scores**, both only for exams they may edit (the exams they created, in batches they are still assigned to) |
+| Batch manager | Super admin | Assigned to one or more batches; upload the student CSV; upload one cropped photo per student per question; mark a student absent; see the status board and answers; download the exam PDF; publish results; re-run grading. Batch managers do not see or handle appeals |
 | Student | Batch manager (CSV) | After publish: see own marks per question and which test cases failed; raise an appeal on a question |
 
-The super admin role is a normal, visible role in the system. Score overrides record who, when, old score, new score and a reason, and a student's result shows that an override was applied. Founder accounts are plain super admin users: separate from student accounts, never importable as students, with no extra restrictions.
+The super admin role is a normal, visible role in the system. Score overrides record who (email and role), when, old score, new score and a reason, and a student's result shows that an override was applied and whether a teacher or an admin made it (never who). Founder accounts are plain super admin users: separate from student accounts, never importable as students, with no extra restrictions.
 
 A batch manager or teacher can only act on batches they are assigned to; a teacher can only change questions and exams they created. A student can only read their own results, and only after the exam is published. A super admin can do everything, on every batch.
 
@@ -143,7 +143,7 @@ The prompts are the files in `prompts/` (`testgen.md`, `transcribe.md`); the que
 
 **Answer status:** `QUEUED` → `TRANSCRIBING` → `RUNNING` → `GRADED`, or `FAILED_TO_GRADE` with a reason: `UNREADABLE`, `UNSUPPORTED_LANGUAGE`, `GEMINI_ERROR`, `WORKER_ERROR` or `DRIVER_MISMATCH`, and a short readable detail. The batch manager's upload screen and the status board show each answer's status on refresh.
 
-**Gemini rate limits.** A busy Gemini (HTTP 429, 5xx, a timeout) is not the answer's fault. The Transcribe Lambda first retries inside the call, up to 3 times, waiting as long as Google asks (or 2, 4, 8 seconds with jitter) while there is time left. If Gemini is still busy it counts the try on the answer, hides the message for 60 seconds (120 after the second try, or what Google asked, between 30 seconds and 5 minutes), and fails the invocation so SQS delivers the message again. After the third busy try the answer becomes `FAILED_TO_GRADE` ("Transcription service busy, re-run"). The test-generation Lambda does the same with Lambda's asynchronous retries and fails the round after three busy tries.
+**Gemini rate limits.** A busy Gemini (HTTP 429, 5xx, a timeout) is not the answer's fault. The Transcribe Lambda first retries inside the call, up to 3 times, waiting as long as Google asks (or 2, 4, 8 seconds with jitter) while there is time left. If Gemini is still busy it counts the try on the answer, hides the message for 60 seconds (120 after the second try, or what Google asked, between 30 seconds and 5 minutes), and fails the invocation so SQS delivers the message again. After the third busy try the answer becomes `FAILED_TO_GRADE` ("Gemini is busy, so this answer could not be read. Wait a minute, then press Grade again."). The test-generation Lambda does the same with Lambda's asynchronous retries and fails the round after three busy tries.
 
 **Errors without dead-letter queues.** Every stage catches all errors, marks the answer `FAILED_TO_GRADE` with the reason, and deletes the message. Without that, a FIFO queue with no DLQ retries a bad message forever, re-calling Gemini each time and blocking that student's other answers. A failed answer is fixed by re-running it (batch manager or teacher), which grades the stored photo again as a new attempt.
 
@@ -220,7 +220,7 @@ All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda 
 
 **Sign-in:** Cognito user pool with Google as the identity provider. A pre-sign-up Lambda rejects any email that is neither on the college domain nor one of the founders' addresses (`superAdminEmails` in `infra/cdk.json`), and any email not already in `Users`, so only pre-registered people can log in.
 
-"Of the batch" below means a batch the caller is assigned to (a student: their own batch). Super admins can call every endpoint and use every batch.
+"Of the batch" below means a batch the caller is assigned to (a student: their own batch). Super admins can call every endpoint and use every batch. "Teacher who may edit the exam" means the teacher who created the exam while still assigned to its batch (the same rule as editing the exam or making its PDF); other teachers of the batch, batch managers and students are refused with 403.
 
 | Method and path | Who | Does |
 | --- | --- | --- |
@@ -249,12 +249,12 @@ All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda 
 | `GET /exams/{id}/answers` | Batch manager, teacher | Status board: every answer of the exam |
 | `POST /exams/{id}/publish` | Batch manager | Make results visible to students |
 | `GET /exams/{id}/results` | Teacher | Every student's per-question and total scores, by name |
-| `GET /answers/{examId}/{studentEmail}/{q}` | Batch manager, teacher | Image link (15 minutes), raw and corrected transcription, fixes, verdicts |
+| `GET /answers/{examId}/{studentEmail}/{q}` | Batch manager, teacher | Image link (15 minutes), raw and corrected transcription, fixes, verdicts, and whether the caller may override it |
 | `POST /answers/{examId}/{studentEmail}/{q}/rerun` | Batch manager, teacher | Re-run grading; new score replaces old |
-| `GET /appeals?examId=&status=` | Batch manager, teacher | List appeals of an exam |
-| `PUT /appeals/{id}` | Batch manager, teacher | Close an appeal with a note, or send the answer to be graded again |
-| `PUT /answers/{examId}/{studentEmail}/{q}/override` | Super admin | Set or clear an override score with a reason (audited) |
-| `GET /answers/{examId}/{studentEmail}/{q}/audit` | Super admin | The score changes recorded for an answer, newest first |
+| `GET /appeals?examId=&status=` | Teacher who may edit the exam | List appeals of an exam |
+| `PUT /appeals/{id}` | Teacher who may edit the exam | Close an appeal with a note, or send the answer to be graded again |
+| `PUT /answers/{examId}/{studentEmail}/{q}/override` | Teacher who may edit the exam | Set or clear an override score with a reason (audited with the caller's email and role) |
+| `GET /answers/{examId}/{studentEmail}/{q}/audit` | Super admin | The score changes recorded for an answer, newest first, with who made each (email and role) |
 | `GET /me/exams` · `GET /me/exams/{id}` | Student | Published exams of their batch; marks per question and failed tests |
 | `POST /appeals` | Student | Appeal one question with a message (up to 1,000 characters) |
 
@@ -272,7 +272,7 @@ Students see nothing until a batch manager publishes the exam; after that, appea
 - "Did not meet the required time complexity, O(…)" when that rule zeroed the question;
 - "Could not be graded — raise an appeal" for `FAILED_TO_GRADE`;
 - "Still being graded" and "No answer was submitted" where those apply;
-- "Score adjusted by admin" when an override applies;
+- "Score adjusted by teacher" or "Score adjusted by admin" when an override applies (a word only: never the person, their email or the reason);
 - "Absent" across the exam if marked absent.
 
 A student never sees the photo, the transcription, the corrected code, the fixes, the failure reason, or who handled an appeal.
@@ -280,11 +280,11 @@ A student never sees the photo, the transcription, the corrected code, the fixes
 **Appeals.**
 
 1. The student appeals one question with a short message. One open appeal per question at a time.
-2. A batch manager or teacher opens it and sees the photo, raw transcription, corrected code with the list of fixes, and the verdicts.
-3. They either re-upload a better crop and re-run (batch managers upload photos; teachers can ask one to), re-run as is, or close it with a note (required). A re-run's new score replaces the old one. An appeal is `OPEN`, then `RERUN` (graded again) or `CLOSED`.
+2. The teacher who may edit the exam (or a super admin) opens it and sees the photo, raw transcription, corrected code with the list of fixes, and the verdicts.
+3. They either have a better crop uploaded and re-run (only batch managers and super admins can upload photos, so a teacher asks a batch manager to), re-run as is, or close it with a note (required). A re-run's new calculated score replaces the old one; an override still wins over it. An appeal is `OPEN`, then `RERUN` (graded again) or `CLOSED`.
 4. The student sees the appeal status and the reviewer's note.
 
-**Overrides.** Only super admins can override a score, with a required reason; the score must be from 0 to the question's marks. The audit log keeps the actor, time, old and new score, and reason; the student's view shows "Score adjusted by admin". An override stays in place through re-runs until a super admin clears it. An override can't be set on a student marked absent (409); unmark absent first.
+**Overrides.** A teacher (for exams they may edit) or a super admin can override a score, with a required reason; the score must be from 0 to the question's marks. The audit log keeps the actor and their role, time, old and new score, and reason; the stored override also remembers the role of who made it, so the student's view shows "Score adjusted by teacher" or "Score adjusted by admin" (overrides from before teachers could override read as admin). Super admins can read an answer's score history; teachers cannot. An override stays in place through re-runs until a teacher or super admin clears it. An override can't be set on a student marked absent (409); unmark absent first.
 
 **Super admin audit.** The API wrapper that every route goes through writes an audit entry for each request a super admin makes with POST, PUT, PATCH or DELETE, and for their reads of `GET /exams/{id}/results` and `GET /answers/...`: actor, method, path, target ids, time and outcome (success, denied, rejected or error). Request bodies are never stored. If an entry cannot be written, the request still completes and the entry is logged as an error.
 
@@ -301,7 +301,7 @@ The biggest risk is a wrong Gemini step with no human check before results; appe
 | Gemini's driver calls the function wrong | Correct code fails tests | Integrity check that student code is unchanged; failed tests shown to student; re-run on appeal |
 | Complexity judged wrongly | A correct answer gets 0 | Large time-limited tests back the judgment; reviewers see the estimated complexity on appeal |
 | Weaker isolation on Fargate, and the worker has internet access | Malicious code could disrupt the worker or send data out | Non-root runner users, process and file limits, no DynamoDB permission, empty environment |
-| Gemini rate limits or outage in exam week | Transcriptions fail in bursts | In-call retries, delayed redelivery for up to three tries, then `FAILED_TO_GRADE` that re-runs cleanly; only 5 transcriptions at once; alarms on queue age and failures |
+| Gemini rate limits or outage in exam week | Transcriptions fail in bursts | In-call retries, delayed redelivery for up to three tries, then `FAILED_TO_GRADE` that can be graded again cleanly; only 5 transcriptions at once; alarms on queue age and failures |
 | AWS account allows only 10 concurrent Lambdas | A burst of work could starve the API | Maximum concurrency on the two queue-driven Lambdas (5 and 2), API throttling, no reserved concurrency |
 | Noisy CPU timing on shared hosts | A borderline solution flips between pass and TLE | Generous language factors; large tests sized well past the target complexity, not near it |
 | A queue-age alarm during a big upload | A false alert | Thresholds of an hour for transcribe and execute, which are slow on purpose |

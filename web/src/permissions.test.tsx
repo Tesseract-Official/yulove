@@ -27,8 +27,6 @@ const PAGES = {
     '/manager/upload',
     '/manager/board',
     '/manager/answer/exam-1/s1%40college.edu/1',
-    '/manager/appeals',
-    '/manager/appeals/exam-1/ap1',
   ],
   student: ['/student', '/student/exams/exam-1'],
 } as const;

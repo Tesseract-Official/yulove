@@ -5,20 +5,21 @@ import type { AppealSummary, UpdateAppealBody } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { ApiError, errorMessage } from '../../api/errors.js';
 import { postToS3 } from '../../imaging/upload.js';
+import { useCurrentUser } from '../../session/MeContext.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
-import { AdminAnswerTools } from '../common/AdminAnswerTools.js';
+import { ScoreTools } from '../common/ScoreTools.js';
 import { AnswerDetail } from '../common/AnswerDetail.js';
 import { keys, useAnswer, useAppeals } from '../common/hooks.js';
 import { APPEAL_STATUS_LABEL, APPEAL_STATUS_TONE } from '../common/labels.js';
 import { PhotoInputs } from '../common/PhotoInputs.js';
 import { Chip, Field, Notice, PageHeader } from '../common/ui.js';
 import { PhotoCropper } from '../manager/PhotoCropper.js';
-import type { AppealSection } from './AppealsPage.js';
 
 const NOTE_MAX = 2000;
 
-function Actions({ appeal, section }: { appeal: AppealSummary; section: AppealSection }) {
+function Actions({ appeal }: { appeal: AppealSummary }) {
   const api = useApi();
+  const me = useCurrentUser();
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
   const [noteProblem, setNoteProblem] = useState<string | undefined>();
@@ -151,7 +152,7 @@ function Actions({ appeal, section }: { appeal: AppealSummary; section: AppealSe
             </button>
           </div>
 
-          {section === 'manager' ? (
+          {me.role === 'SUPER_ADMIN' ? (
             uploading ? (
               <div className="form">
                 <p>
@@ -178,8 +179,9 @@ function Actions({ appeal, section }: { appeal: AppealSummary; section: AppealSe
             )
           ) : (
             <p className="muted">
-              To use a better photo, ask a batch manager to upload it. You can still grade the photo
-              that is there, or close the appeal.
+              To use a better photo, ask a batch manager to upload it on the Upload answers screen.
+              Then come back, press Refresh, and re-grade or close the appeal. You can also grade
+              the photo that is there, or close the appeal.
             </p>
           )}
         </div>
@@ -198,7 +200,7 @@ function Actions({ appeal, section }: { appeal: AppealSummary; section: AppealSe
 }
 
 /** One appeal: what the student wrote, the answer, and what the reviewer can do about it. */
-export function AppealDetailPage({ section }: { section: AppealSection }) {
+export function AppealDetailPage() {
   const { examId = '', appealId = '' } = useParams();
   const [params] = useSearchParams();
   const batch = params.get('batch');
@@ -208,7 +210,7 @@ export function AppealDetailPage({ section }: { section: AppealSection }) {
   const appeal = appeals.data?.find((a) => a.appealId === appealId);
   const answer = useAnswer(examId, appeal?.studentEmail ?? '', appeal?.questionNumber ?? 0);
 
-  const backTo = `/${section}/appeals?exam=${encodeURIComponent(examId)}${
+  const backTo = `/teacher/appeals?exam=${encodeURIComponent(examId)}${
     batch ? `&batch=${encodeURIComponent(batch)}` : ''
   }`;
   const header = (
@@ -292,7 +294,7 @@ export function AppealDetailPage({ section }: { section: AppealSection }) {
         </span>
       </div>
 
-      <Actions appeal={appeal} section={section} />
+      <Actions appeal={appeal} />
 
       {answer.isPending ? (
         <Loading label="Loading the answer…" />
@@ -305,7 +307,7 @@ export function AppealDetailPage({ section }: { section: AppealSection }) {
       ) : (
         <>
           <AnswerDetail answer={answer.data} wide />
-          <AdminAnswerTools answer={answer.data} />
+          <ScoreTools answer={answer.data} />
         </>
       )}
     </section>

@@ -1,4 +1,5 @@
 import {
+  TRANSCRIBE_BUSY_REASON,
   LANGUAGES,
   driverContainsCode,
   type FailReason,
@@ -17,7 +18,7 @@ export const GEMINI_CALL_TIMEOUT_MS = 40_000;
 export const SAFETY_MARGIN_MS = 10_000;
 export const MAX_RETRIES = 3;
 export const RETRY_BASE_DELAY_MS = 2_000;
-export const BUSY_MESSAGE = 'Transcription service busy, re-run';
+export const BUSY_MESSAGE = TRANSCRIBE_BUSY_REASON;
 
 /** What Gemini is asked to return. */
 export const TRANSCRIBE_RESPONSE_SCHEMA = {
@@ -235,8 +236,7 @@ export interface TranscribeResult {
   calls: number;
   /**
    * True when every try ended in a 429, a 5xx or a timeout, or there was no time to try again:
-   * Gemini is busy, not the answer's fault. `verdict` then says "Transcription service busy,
-   * re-run", for callers that give up at once; the Lambda retries later instead.
+   * Gemini is busy, not the answer's fault. `verdict` then says BUSY_MESSAGE, for callers that give up at once; the Lambda retries later instead.
    */
   busy: boolean;
   /** The wait Google last asked for, in milliseconds. */
@@ -246,7 +246,7 @@ export interface TranscribeResult {
 /**
  * Sends the photo and prompt to Gemini and checks what comes back. 429 and 5xx errors (and
  * dropped connections) are retried up to 3 times with backoff while there is time; if they never
- * clear, the answer fails as "Transcription service busy, re-run".
+ * clear, the answer fails with BUSY_MESSAGE.
  */
 export async function transcribeImage(input: TranscribeInput): Promise<TranscribeResult> {
   const result = await withRetries(

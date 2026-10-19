@@ -9,6 +9,7 @@ import {
   seedGradingWorld,
   TEACHER_A,
   TEACHER_B,
+  TEACHER_C,
 } from '../test-utils/answers.js';
 import { handler } from './list-appeals.js';
 
@@ -38,7 +39,7 @@ beforeEach(() => {
 
 describe('GET /appeals', () => {
   it("lists the exam's appeals newest first with the student's name and roll number", async () => {
-    const { status, body } = await call(MANAGER);
+    const { status, body } = await call(TEACHER_A);
 
     expect(status).toBe(200);
     expect(body.appeals.map((a: AppealItem) => a.appealId)).toEqual(['3', '2', '1']);
@@ -61,23 +62,32 @@ describe('GET /appeals', () => {
     }
   });
 
-  it('is open to a batch manager, a teacher and a super admin of the batch', async () => {
-    for (const email of [MANAGER, TEACHER_A, 'super-admin@college.edu']) {
+  it('is open to the teacher who made the exam and to a super admin', async () => {
+    for (const email of [TEACHER_A, 'super-admin@college.edu']) {
       expect((await call(email)).status).toBe(200);
     }
   });
 
   it.each([
     ['a student', 's1@college.edu'],
+    ['a batch manager of the exam’s batch', MANAGER],
     ['a batch manager of another batch', MANAGER_B],
+    ['a teacher of the same batch who did not make the exam', TEACHER_C],
     ['a teacher of another batch', TEACHER_B],
-  ])('refuses %s with 403', async (_who, email) => {
-    expect((await call(email)).status).toBe(403);
+  ])('refuses %s with 403 and shows no appeal', async (_who, email) => {
+    const { status, body } = await call(email);
+    expect(status).toBe(403);
+    expect(JSON.stringify(body)).not.toContain('message 1');
+  });
+
+  it('refuses a teacher who made the exam but has since been taken off its batch', async () => {
+    db.users.get(TEACHER_A)!.batchIds = ['B'];
+    expect((await call(TEACHER_A)).status).toBe(403);
   });
 
   it('needs an exam (422), a valid status (422) and an exam that exists (404)', async () => {
-    expect((await call(MANAGER, {})).status).toBe(422);
-    expect((await call(MANAGER, { examId: EXAM_ID, status: 'DONE' })).status).toBe(422);
-    expect((await call(MANAGER, { examId: 'nope' })).status).toBe(404);
+    expect((await call(TEACHER_A, {})).status).toBe(422);
+    expect((await call(TEACHER_A, { examId: EXAM_ID, status: 'DONE' })).status).toBe(422);
+    expect((await call(TEACHER_A, { examId: 'nope' })).status).toBe(404);
   });
 });

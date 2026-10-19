@@ -6,9 +6,9 @@ import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { useAppeals } from '../common/hooks.js';
 import { APPEAL_STATUS_LABEL, APPEAL_STATUS_TONE, plural } from '../common/labels.js';
 import { BatchSelect, ExamSelect } from '../common/pickers.js';
+import { useCurrentUser } from '../../session/MeContext.js';
 import { Chip, PageHeader } from '../common/ui.js';
 
-export type AppealSection = 'manager' | 'teacher';
 type Filter = 'ALL' | AppealStatus;
 
 /** Open appeals first; inside each group the newest first. */
@@ -19,8 +19,12 @@ export function orderAppeals(appeals: readonly AppealSummary[]): AppealSummary[]
 
 const snippet = (text: string) => (text.length > 110 ? `${text.slice(0, 107)}…` : text);
 
-/** The queue of appeals for one exam, for the batch managers and teachers who review them. */
-export function AppealsPage({ section }: { section: AppealSection }) {
+/**
+ * The queue of appeals for one exam, for the teachers who handle them. A teacher chooses among
+ * the exams they made; a super admin among all of them.
+ */
+export function AppealsPage() {
+  const me = useCurrentUser();
   const [params, setParams] = useSearchParams();
   const batchId = params.get('batch') ?? '';
   const examId = params.get('exam') ?? '';
@@ -52,7 +56,7 @@ export function AppealsPage({ section }: { section: AppealSection }) {
       <PageHeader
         title="Appeals"
         intro="Students can appeal a question after results are published. Open appeals are shown first."
-        backTo={`/${section}`}
+        backTo="/teacher"
       />
 
       <div className="form">
@@ -65,6 +69,7 @@ export function AppealsPage({ section }: { section: AppealSection }) {
           value={examId}
           onChange={(id) => select({ exam: id })}
           statuses={['PUBLISHED']}
+          only={(exam) => me.role === 'SUPER_ADMIN' || exam.createdBy === me.email}
           emptyHint="No exam in this batch has been published yet, so there are no appeals."
         />
       </div>
@@ -131,7 +136,7 @@ export function AppealsPage({ section }: { section: AppealSection }) {
                     <p className="muted break">“{snippet(appeal.message)}”</p>
                     <p className="muted">{new Date(appeal.createdAt).toLocaleString()}</p>
                     <Link
-                      to={`/${section}/appeals/${encodeURIComponent(appeal.examId)}/${encodeURIComponent(
+                      to={`/teacher/appeals/${encodeURIComponent(appeal.examId)}/${encodeURIComponent(
                         appeal.appealId,
                       )}?batch=${encodeURIComponent(batchId)}`}
                       className="button link-button"

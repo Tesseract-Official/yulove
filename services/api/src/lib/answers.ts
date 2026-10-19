@@ -188,7 +188,7 @@ export async function startAttempt(target: AnswerTarget, imageKey: string): Prom
       key,
       attempt,
       'WORKER_ERROR',
-      'Could not queue the answer, submit again',
+      'Could not queue the answer. Submit it again.',
     );
     throw new HttpError(503, 'UNAVAILABLE', 'Could not queue the answer. Try submitting again.');
   }

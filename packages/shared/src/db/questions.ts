@@ -6,6 +6,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from '../errors.js';
+import { endSentence } from '../sentences.js';
 import type { QuestionItem, Signature } from '../types.js';
 import {
   buildUpdate,
@@ -271,7 +272,7 @@ export function markGenerationFailed(
   reason: string,
 ): Promise<GenerationWrite> {
   return writeForGeneration(questionId, version, attempt, {
-    set: { testStatus: 'GENERATION_FAILED', testFailure: reason },
+    set: { testStatus: 'GENERATION_FAILED', testFailure: endSentence(reason) },
     remove: ['testGenTries'],
   });
 }

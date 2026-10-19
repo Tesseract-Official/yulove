@@ -52,7 +52,7 @@ describe('studentQuestionView', () => {
       messages: [],
       failedSmallTests: [],
       failedLargeTests: [],
-      adjustedByAdmin: false,
+      adjusted: false,
       canAppeal: true,
     });
   });
@@ -136,11 +136,43 @@ describe('studentQuestionView', () => {
 
   it('says "Score adjusted by admin" and shows the override as the score, not why', () => {
     const v = view(
-      answer({ override: { score: 9, reason: 'PRIVATE REASON', by: 'admin@x.com', at: 't' } }),
+      answer({
+        override: {
+          score: 9,
+          reason: 'PRIVATE REASON',
+          by: 'admin@x.com',
+          byRole: 'SUPER_ADMIN',
+          at: 't',
+        },
+      }),
     );
-    expect(v).toMatchObject({ score: 9, adjustedByAdmin: true });
+    expect(v).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'admin' });
     expect(v.messages).toContain('Score adjusted by admin');
-    expect(JSON.stringify(v)).not.toMatch(/PRIVATE REASON|admin@x.com/);
+    expect(JSON.stringify(v)).not.toMatch(/PRIVATE REASON|admin@x.com|SUPER_ADMIN/);
+  });
+
+  it('says "Score adjusted by teacher" for a teacher’s override, without their name, email or reason', () => {
+    const v = view(
+      answer({
+        override: {
+          score: 9,
+          reason: 'PRIVATE REASON',
+          by: 'tina@x.com',
+          byRole: 'TEACHER',
+          at: 't',
+        },
+      }),
+    );
+    expect(v).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'teacher' });
+    expect(v.messages).toContain('Score adjusted by teacher');
+    expect(v.messages).not.toContain('Score adjusted by admin');
+    expect(JSON.stringify(v)).not.toMatch(/PRIVATE REASON|tina@x.com|TEACHER|"by"/);
+  });
+
+  it('reads an override from before roles were recorded as made by an admin', () => {
+    const v = view(answer({ override: { score: 9, reason: 'r', by: 'old@x.com', at: 't' } }));
+    expect(v).toMatchObject({ adjusted: true, adjustedBy: 'admin' });
+    expect(v.messages).toContain('Score adjusted by admin');
   });
 
   it('treats unfinished and missing answers as such', () => {

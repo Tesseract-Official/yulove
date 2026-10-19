@@ -17,7 +17,8 @@ export function TeacherHome() {
           See every student’s marks and check any answer.
         </MenuCard>
         <MenuCard to="/teacher/appeals" title="Appeals">
-          Read what students wrote about a mark and decide what to do about it.
+          Read what students wrote about a mark, look at the answer, and grade it again or close the
+          appeal.
         </MenuCard>
       </div>
     </section>

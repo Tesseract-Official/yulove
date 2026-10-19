@@ -136,6 +136,8 @@ export interface Override {
   score: number;
   reason: string;
   by: string;
+  /** Who made it: a teacher or a super admin. Absent on overrides from before teachers could. */
+  byRole?: 'TEACHER' | 'SUPER_ADMIN';
   /** ISO timestamp. */
   at: string;
 }
@@ -203,6 +205,8 @@ export interface AuditLogItem {
   entityKey: string;
   timestamp: string;
   actor: string;
+  /** The actor's role when the entry was written. Absent on older entries. */
+  actorRole?: Role;
   action: string;
   before: unknown;
   after: unknown;

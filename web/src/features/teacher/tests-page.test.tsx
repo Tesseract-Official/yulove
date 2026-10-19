@@ -54,6 +54,44 @@ describe('the state of the tests, in plain words', () => {
     expect(screen.getByRole('button', { name: 'Generate tests again' })).toBeInTheDocument();
   });
 
+  it('puts a full stop and the way to try again after a reason that has none', async () => {
+    open(testsResponse('GENERATION_FAILED', { testFailure: 'Gemini returned malformed JSON' }));
+
+    expect(
+      await screen.findByText(
+        'The tests could not be made. Gemini returned malformed JSON. Press Generate tests to try again.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the busy reason as one clear sentence, with nothing doubled', async () => {
+    open(
+      testsResponse('GENERATION_FAILED', {
+        testFailure:
+          'The tests could not be made because Gemini is busy. Wait a minute, then press Generate tests again.',
+      }),
+    );
+
+    const message = await screen.findByRole('alert');
+    expect(message).toHaveTextContent(
+      'The tests could not be made because Gemini is busy. Wait a minute, then press Generate tests again.',
+    );
+    expect(message.textContent).not.toMatch(/You can try again|again\.\s*You|\. \./);
+    expect(message.textContent?.match(/could not be made/g)).toHaveLength(1);
+  });
+
+  it('shows the old stored busy text as the new sentence', async () => {
+    open(
+      testsResponse('GENERATION_FAILED', {
+        testFailure: 'Gemini is busy right now, try generating again',
+      }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The tests could not be made because Gemini is busy. Wait a minute, then press Generate tests again.',
+    );
+  });
+
   it('says when it was last checked, and that it does not update by itself', async () => {
     open(testsResponse(null));
 

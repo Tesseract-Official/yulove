@@ -1,4 +1,5 @@
 import { putAuditItem } from './db/audit-log.js';
+import type { Role } from './enums.js';
 import { examStudentKey, type AuditLogItem } from './types.js';
 import { normaliseEmail } from './identity.js';
 
@@ -46,9 +47,18 @@ export function writeAudit(
   after: unknown,
   reason: string,
   now: () => Date = () => new Date(),
+  actorRole?: Role,
 ): Promise<string> {
   return appendAudit(
-    { entityKey, actor: normaliseEmail(actor), action, before, after, reason },
+    {
+      entityKey,
+      actor: normaliseEmail(actor),
+      ...(actorRole ? { actorRole } : {}),
+      action,
+      before,
+      after,
+      reason,
+    },
     now,
   );
 }

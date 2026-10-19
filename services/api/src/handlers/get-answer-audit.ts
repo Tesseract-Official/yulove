@@ -23,9 +23,10 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
 
   const history = await auditLogDb.listAuditForEntity(answerEntityKey(examId, email, number));
   const entries: AuditEntry[] = history
-    .map(({ timestamp, actor, action, before, after, reason }) => ({
+    .map(({ timestamp, actor, actorRole, action, before, after, reason }) => ({
       timestamp,
       actor,
+      ...(actorRole ? { actorRole } : {}),
       action,
       before,
       after,

@@ -201,7 +201,7 @@ describe('POST /answers/{examId}/{studentEmail}/{q}/rerun', () => {
         attempt: 2,
         status: 'FAILED_TO_GRADE',
         failReason: 'WORKER_ERROR',
-        failDetail: 'Could not queue the answer, submit again',
+        failDetail: 'Could not queue the answer. Submit it again.',
       });
     });
   });

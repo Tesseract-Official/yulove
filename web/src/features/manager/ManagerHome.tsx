@@ -19,9 +19,6 @@ export function ManagerHome() {
         <MenuCard to="/manager/board" title="Check grading and publish">
           See how every answer is doing, grade failed ones again, and publish the results.
         </MenuCard>
-        <MenuCard to="/manager/appeals" title="Appeals">
-          Read what students wrote about a mark, look at the answer, and grade it again or close it.
-        </MenuCard>
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import type { Signature, TestPreview } from '@yulove/shared';
+import { testFailureText, type Signature, type TestPreview } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { errorMessage } from '../../api/errors.js';
 import { ErrorState, Loading } from '../../ui/states.js';
@@ -181,10 +181,7 @@ export function QuestionTestsPage() {
         <Notice kind="info">Generation started. Press Refresh in a minute or two to check.</Notice>
       ) : null}
       {state === 'GENERATION_FAILED' ? (
-        <Notice kind="error">
-          The tests could not be made. {tests.data.testFailure ?? 'No reason was given.'} You can
-          try again.
-        </Notice>
+        <Notice kind="error">{testFailureText(tests.data.testFailure)}</Notice>
       ) : null}
 
       {state === 'NONE' || state === 'GENERATION_FAILED' ? (

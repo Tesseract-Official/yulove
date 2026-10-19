@@ -74,7 +74,21 @@ export async function loadQuestionVersions(
   return refs.map((ref, i) => ({ ref, item: items[i] }));
 }
 
-/** The exam, if the caller may manage it: its creator (a teacher) or any super admin. */
+/**
+ * Whether the caller may manage this exam: any super admin, or the teacher who created it while
+ * still assigned to its batch. This is the one rule for "an exam a teacher may edit": editing,
+ * making the PDF, handling its appeals and overriding its scores all use it.
+ */
+export function mayManageExam(ctx: AuthContext, exam: ExamItem): boolean {
+  if (ctx.user.role === 'SUPER_ADMIN') return true;
+  return (
+    ctx.user.role === 'TEACHER' &&
+    exam.createdBy === ctx.user.email &&
+    ctx.canAccessBatch(exam.batchId)
+  );
+}
+
+/** The exam, if the caller may manage it (see mayManageExam): else 404 or 403. */
 export async function loadManagedExam(ctx: AuthContext, examId: string): Promise<ExamItem> {
   const exam = await examsDb.getExam(examId);
   if (!exam) throw new NotFoundError(`No exam ${examId}`);

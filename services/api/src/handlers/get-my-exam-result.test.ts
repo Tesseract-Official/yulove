@@ -139,15 +139,51 @@ describe('GET /me/exams/{id}', () => {
     db.put(
       'Answers',
       answerItem(S1, 1, {
-        override: { score: 9, reason: 'PRIVATE REASON', by: 'admin@x.com', at: 't' },
+        override: {
+          score: 9,
+          reason: 'PRIVATE REASON',
+          by: 'admin@x.com',
+          byRole: 'SUPER_ADMIN',
+          at: 't',
+        },
       }),
     );
     const { body } = await call(S1);
 
-    expect(body.questions[0]).toMatchObject({ score: 9, adjustedByAdmin: true });
+    expect(body.questions[0]).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'admin' });
     expect(body.questions[0].messages).toContain('Score adjusted by admin');
     expect(body.totalScore).toBe(9);
-    expect(JSON.stringify(body)).not.toMatch(/PRIVATE REASON|admin@x.com/);
+    expect(JSON.stringify(body)).not.toMatch(/PRIVATE REASON|admin@x.com|SUPER_ADMIN/);
+  });
+
+  it('says "Score adjusted by teacher" for a teacher’s override, never their email, role or reason', async () => {
+    db.put(
+      'Answers',
+      answerItem(S1, 1, {
+        override: {
+          score: 9,
+          reason: 'PRIVATE REASON',
+          by: 'teacher@college.edu',
+          byRole: 'TEACHER',
+          at: 't',
+        },
+      }),
+    );
+    const { body } = await call(S1);
+
+    expect(body.questions[0]).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'teacher' });
+    expect(body.questions[0].messages).toContain('Score adjusted by teacher');
+    expect(body.questions[0].messages).not.toContain('Score adjusted by admin');
+    expect(JSON.stringify(body)).not.toMatch(/PRIVATE REASON|teacher@college.edu|TEACHER|"by"/);
+  });
+
+  it('reads an override from before roles were recorded as an admin’s', async () => {
+    db.put(
+      'Answers',
+      answerItem(S1, 1, { override: { score: 9, reason: 'r', by: 'old@x.com', at: 't' } }),
+    );
+    const { body } = await call(S1);
+    expect(body.questions[0].messages).toContain('Score adjusted by admin');
   });
 
   it("shows the appeal status and the reviewer's note, not who handled it", async () => {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { AnswerDetailResponse, AuditEntry } from '@yulove/shared';
+import type { AnswerDetailResponse, AuditEntry, Role } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { ApiError, errorMessage } from '../../api/errors.js';
 import { useCurrentUser } from '../../session/MeContext.js';
@@ -199,6 +199,13 @@ function OverrideDialog({
   );
 }
 
+const ROLE_WORD: Record<Role, string> = {
+  SUPER_ADMIN: 'Super admin',
+  TEACHER: 'Teacher',
+  BATCH_MANAGER: 'Batch manager',
+  STUDENT: 'Student',
+};
+
 const ACTION_TEXT: Record<string, string> = {
   OVERRIDE_SCORE: 'Set an override',
   CLEAR_OVERRIDE: 'Removed the override',
@@ -219,7 +226,9 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
         Score {before ?? '?'} → {after ?? '?'}
       </span>
       <span className="muted break">
-        By {entry.actor} · {new Date(entry.timestamp).toLocaleString()}
+        By {entry.actor}
+        {entry.actorRole ? ` (${ROLE_WORD[entry.actorRole]})` : ''} ·{' '}
+        {new Date(entry.timestamp).toLocaleString()}
       </span>
       <span>Reason: {entry.reason}</span>
     </li>
@@ -258,42 +267,48 @@ function AuditPanel({ answer }: { answer: AnswerDetailResponse }) {
 }
 
 /**
- * For super admins only, on an answer: change the score by hand, and see who changed it before.
- * Everyone else sees nothing here, and these routes are never called for them.
+ * On an answer: change the score by hand. Shown to a super admin and to the teacher who made the
+ * exam (the API says which with `canOverride`); batch managers never see it. The score history is
+ * for super admins only, and its route is never called for anyone else.
  */
-export function AdminAnswerTools({ answer }: { answer: AnswerDetailResponse }) {
+export function ScoreTools({ answer }: { answer: AnswerDetailResponse }) {
   const me = useCurrentUser();
   const [dialog, setDialog] = useState(false);
   const [history, setHistory] = useState(false);
   const [done, setDone] = useState<string | undefined>();
 
-  if (me.role !== 'SUPER_ADMIN') return null;
+  const isAdmin = me.role === 'SUPER_ADMIN';
+  if (!answer.canOverride && !isAdmin) return null;
 
   return (
-    <section className="admin-tools" aria-label="Admin tools">
-      <h2>Admin tools</h2>
+    <section className="admin-tools" aria-label="Score tools">
+      <h2>Score tools</h2>
       {done ? <Notice kind="success">{done}</Notice> : null}
       <div className="actions">
-        <button
-          type="button"
-          className="button"
-          onClick={() => {
-            setDone(undefined);
-            setDialog(true);
-          }}
-        >
-          Override score
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-expanded={history}
-          onClick={() => setHistory((open) => !open)}
-        >
-          Audit history
-        </button>
+        {answer.canOverride ? (
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              setDone(undefined);
+              setDialog(true);
+            }}
+          >
+            Override score
+          </button>
+        ) : null}
+        {isAdmin ? (
+          <button
+            type="button"
+            className="button"
+            aria-expanded={history}
+            onClick={() => setHistory((open) => !open)}
+          >
+            Audit history
+          </button>
+        ) : null}
       </div>
-      {history ? <AuditPanel answer={answer} /> : null}
+      {isAdmin && history ? <AuditPanel answer={answer} /> : null}
       {dialog ? (
         <OverrideDialog
           answer={answer}

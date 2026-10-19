@@ -54,7 +54,10 @@ function FailedSmallTest({ test }: { test: FailedSmallTest }) {
 /** One of the lines the API gives a question, as a message box of the right kind. */
 function MessageLine({ text }: { text: string }) {
   const kind =
-    text === MESSAGES.adjusted || text === MESSAGES.absent || text === MESSAGES.inProgress
+    text === MESSAGES.adjusted ||
+    text === MESSAGES.adjustedByTeacher ||
+    text === MESSAGES.absent ||
+    text === MESSAGES.inProgress
       ? 'info'
       : 'warning';
   return <Notice kind={kind}>{text}</Notice>;

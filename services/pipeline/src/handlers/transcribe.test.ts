@@ -362,7 +362,7 @@ describe('Gemini still busy after the retries in one call', () => {
     expect(visibility()[0]?.VisibilityTimeout).toBe(120);
   });
 
-  it('third time: gives up with "Transcription service busy, re-run" and does not throw', async () => {
+  it('third time: gives up with the busy sentence and does not throw', async () => {
     seedAnswer(1, { status: 'TRANSCRIBING', transcribeTries: MAX_TRANSCRIBE_TRIES - 1 });
 
     const [outcome] = await handlerFor(rateLimitedFourTimes())(busyEvent());
@@ -371,7 +371,8 @@ describe('Gemini still busy after the retries in one call', () => {
     expect(outcome).toEqual({
       outcome: 'failed',
       failReason: 'GEMINI_ERROR',
-      detail: 'Transcription service busy, re-run',
+      detail:
+        'Gemini is busy, so this answer could not be read. Wait a minute, then press Grade again.',
     });
     expect(answer()).toMatchObject({
       status: 'FAILED_TO_GRADE',

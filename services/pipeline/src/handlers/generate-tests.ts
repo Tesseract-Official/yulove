@@ -1,6 +1,7 @@
 import { PutObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import {
+  TESTGEN_BUSY_REASON,
   emitAppError,
   executeMsg,
   questionKeys,
@@ -72,7 +73,7 @@ const RETRY_BASE_DELAY_MS = 2_000;
  * Lambda's asynchronous retries (two, about a minute and two minutes later) run it again.
  */
 export const MAX_BUSY_TRIES = 3;
-export const BUSY_REASON = 'Gemini is busy right now, try generating again';
+export const BUSY_REASON = TESTGEN_BUSY_REASON;
 
 export type TestGenOutcome =
   | { outcome: 'sent'; attempt: number }

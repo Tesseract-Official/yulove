@@ -68,6 +68,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     { active: before },
     { active: body.active },
     body.reason,
+    undefined,
+    ctx.user.role,
   );
   if (!(await usersDb.updateUser(target.email, { active: body.active }))) {
     throw new NotFoundError(`No user ${email}`);
@@ -84,6 +86,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       { active: false },
       { active: true },
       'Undone automatically: it would have left no active super admin',
+      undefined,
+      ctx.user.role,
     );
     throw new ConflictError('This is the last active super admin, so it cannot be deactivated');
   }

@@ -209,6 +209,11 @@ export interface AnswerDetailResponse {
   verdicts: TestVerdict[];
   score: number;
   override: Override | undefined;
+  /**
+   * The caller may set or clear the override on this answer: a super admin, or the teacher who
+   * made the exam (and is still assigned to its batch). The override route checks it again.
+   */
+  canOverride: boolean;
 }
 
 /** One question in GET /questions: its latest version. */
@@ -452,6 +457,8 @@ export interface SetOverrideResponse {
 export interface AuditEntry {
   timestamp: string;
   actor: string;
+  /** The actor's role then; missing on entries from before roles were recorded. */
+  actorRole?: Role;
   /** OVERRIDE_SCORE or CLEAR_OVERRIDE. */
   action: string;
   /** `{ override, displayedScore }` before the change. */

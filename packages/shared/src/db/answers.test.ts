@@ -258,9 +258,9 @@ describe('other stage writes are guarded by the attempt too', () => {
   it('markFailed stores a readable detail, cut to 300 characters', async () => {
     ddbMock.on(UpdateCommand).resolves({});
 
-    await markFailed(key, 2, 'GEMINI_ERROR', '  Transcription service busy, re-run  ');
+    await markFailed(key, 2, 'GEMINI_ERROR', '  Gemini is busy, so wait a minute.  ');
     expect(lastUpdate().ExpressionAttributeValues).toMatchObject({
-      ':failDetail': 'Transcription service busy, re-run',
+      ':failDetail': 'Gemini is busy, so wait a minute.',
     });
     expect(lastUpdate().UpdateExpression).not.toContain('#rm_failDetail');
 
@@ -268,6 +268,20 @@ describe('other stage writes are guarded by the attempt too', () => {
     const stored = lastUpdate().ExpressionAttributeValues?.[':failDetail'] as string;
     expect(stored).toHaveLength(300);
     expect(stored.endsWith('...')).toBe(true);
+  });
+
+  it('markFailed gives the detail a full stop when it has none, and keeps one that it has', async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+
+    await markFailed(key, 2, 'WORKER_ERROR', 'The photo could not be found');
+    expect(lastUpdate().ExpressionAttributeValues).toMatchObject({
+      ':failDetail': 'The photo could not be found.',
+    });
+
+    await markFailed(key, 2, 'WORKER_ERROR', 'Is it readable?');
+    expect(lastUpdate().ExpressionAttributeValues).toMatchObject({
+      ':failDetail': 'Is it readable?',
+    });
   });
 
   it('markFailed without a detail clears any earlier one', async () => {

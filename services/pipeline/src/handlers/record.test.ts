@@ -191,8 +191,8 @@ describe('an ANSWER result', () => {
 
   describe('a worker failure', () => {
     it.each([
-      ['DRIVER_MISMATCH', 'The driver program changed the student code'],
-      ['WORKER_ERROR', 'sandbox crashed'],
+      ['DRIVER_MISMATCH', 'The driver program changed the student code.'],
+      ['WORKER_ERROR', 'sandbox crashed.'],
     ] as const)('%s: FAILED_TO_GRADE with the reason and detail', async (reason, detail) => {
       expect(await run(answerFailed(reason, detail))).toEqual({
         outcome: 'failed-to-grade',
@@ -312,7 +312,7 @@ describe('an ANSWER result', () => {
       expect(stored()).toMatchObject({
         status: 'FAILED_TO_GRADE',
         failReason: 'WORKER_ERROR',
-        failDetail: 'Could not record the result, re-run',
+        failDetail: 'Could not record the result. Press Grade again.',
       });
     });
 
@@ -503,7 +503,7 @@ describe('a SETUP result', () => {
 
     expect(outcome).toMatchObject({ outcome: 'generation-failed' });
     expect(q()).toMatchObject({ testStatus: 'GENERATION_FAILED' });
-    expect(q()?.testFailure).toBe('Setup failed: Could not read reference.py from storage');
+    expect(q()?.testFailure).toBe('Setup failed: Could not read reference.py from storage.');
     expect(invokes()).toHaveLength(0);
   });
 

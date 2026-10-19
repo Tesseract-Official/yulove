@@ -8,21 +8,21 @@ import {
 } from '@yulove/shared';
 import { answersDb, appealsDb, requireUser } from '@yulove/shared/server';
 import { rerunAnswer } from '../lib/answers.js';
-import { loadExamInBatch } from '../lib/exams.js';
+import { loadManagedExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /**
- * PUT /appeals/{id} (batch manager, teacher of the exam's batch): close an appeal with a note, or
- * have the answer graded again (RERUN). The reviewer is recorded as `handledBy`. The student sees
+ * PUT /appeals/{id} (teacher who may manage the exam, or a super admin): close an appeal with a
+ * note, or have the answer graded again (RERUN). The reviewer is recorded as `handledBy`. The student sees
  * the status and the note.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
-  const ctx = await requireUser(event, ['BATCH_MANAGER', 'TEACHER']);
+  const ctx = await requireUser(event, ['TEACHER']);
   const body = parseBody(updateAppealBody, event);
 
   const appeal = await appealsDb.getAppeal(pathParam(event, 'id'));
   if (!appeal) throw new NotFoundError('No such appeal');
-  await loadExamInBatch(ctx, appeal.examId);
+  await loadManagedExam(ctx, appeal.examId);
 
   if (appeal.status === 'CLOSED') throw new ConflictError('This appeal is already closed');
   if (body.status === 'RERUN' && appeal.status !== 'OPEN') {

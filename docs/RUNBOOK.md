@@ -16,7 +16,7 @@ Two rules before anything else:
 5. [A normal week: teachers](#5-a-normal-week-teachers)
 6. [A normal week: batch managers](#6-a-normal-week-batch-managers)
 7. [What students see, and appeals](#7-what-students-see-and-appeals)
-8. [Super admin: overrides and the audit log](#8-super-admin-overrides-and-the-audit-log)
+8. [Overriding a score, and the audit log](#8-overriding-a-score-and-the-audit-log)
 9. [Answers that could not be graded](#9-answers-that-could-not-be-graded)
 10. [Gemini](#10-gemini)
 11. [Alarms](#11-alarms)
@@ -48,7 +48,7 @@ Two rules before anything else:
 - **Batch**: a class group of students. Each exam belongs to one batch.
 - **Exam**: the set of questions a batch writes in one week.
 - **Appeal**: a student asking for one question to be looked at again.
-- **Override**: a founder setting a question's score by hand.
+- **Override**: a teacher or a founder setting a question's score by hand.
 - **Practice data / dev data**: sample data that is marked `dev` so it can be removed later in one go.
 
 **Your AWS login name.** The commands below use the profile name `dsa-judge`. Use whatever name you gave your AWS login profile.
@@ -170,7 +170,7 @@ Good to know:
 - If you edit a question that is already used in an exam with answers, the system makes a new version of it; the old exam keeps the old version. Changing only the title or the examples keeps the generated tests; changing anything else means generating and approving again.
 - Students write one answer per page and only the function, not the input and output code. The PDF says so.
 
-After the exam, **Results** shows every student's score per question and in total, by name. **Appeals** is in section 7.
+After the exam, **Results** shows every student's score per question and in total, by name. **Appeals** (section 7) are handled by teachers, and only for exams they made.
 
 ## 6. A normal week: batch managers
 
@@ -189,7 +189,9 @@ After the exam, **Results** shows every student's score per question and in tota
    - download the exam PDF.
 5. **Publish.** When the board looks right, press **Publish results**. If some answers are still being graded it warns you and shows how many; you may press **Publish anyway** and those answers will update later. Students see nothing before this moment. Publishing again does nothing.
 
-Grading again after publishing is fine: the student's score is replaced by the new one.
+Grading again after publishing is fine: the student's calculated score is replaced by the new one (a score a teacher or founder set by hand stays until they remove it; see section 8).
+
+**Batch managers do not see appeals.** Appeals are handled by the teacher who made the exam. If a student tells you they have appealed, ask them to wait for their teacher; if the teacher asks for a better photo, upload it from **Upload answers** (use **Replace photo**, then **Replace and grade again**).
 
 ## 7. What students see, and appeals
 
@@ -204,25 +206,25 @@ Students never see the photo, the code that was read, or who handled their appea
 
 **An appeal** starts when a student presses **Raise an appeal** on one question and writes a short message (up to 1,000 characters). Only one appeal can be open per question.
 
-Batch managers and teachers see appeals under **Appeals** (choose batch and exam; open ones come first). Opening one shows the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results. Then choose:
+**Teachers** handle appeals, under **Appeals** on the Teacher menu. A teacher sees the exams they made (choose batch and exam; open ones come first); founders see every exam. Another teacher of the same batch cannot open them, and batch managers cannot see appeals at all. Anyone following an old link to the appeals pages in the Batch manager menu is sent to the teacher page (founders) or told it is not allowed (batch managers). Opening one shows the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results. Then choose:
 
 - **Re-grade as is**: grade the stored photo again.
-- **Upload a better photo and re-grade**: batch managers only. Choose a new picture, crop it, and it is graded again. (A teacher who needs this asks a batch manager.)
+- **Upload a better photo and re-grade**: only founders can do this from the appeal, because only founders and batch managers can upload photos. A teacher who needs a better photo asks a batch manager to upload it from **Upload answers**, then presses **Refresh** here and either re-grades or closes the appeal.
 - **Close with a note**: a note is required; the student sees it.
 
 After a re-grade press **Refresh** on the appeal to watch the new result. The student sees the status ("Waiting for a reviewer", "Your answer was graded again", "Closed") and your note.
 
-## 8. Super admin: overrides and the audit log
+## 8. Overriding a score, and the audit log
 
-Only founders can set a score by hand.
+A **teacher** can set a score by hand for exams they made, and so can the **founders** for any exam. Batch managers and students cannot.
 
-1. Open the answer (from the board, results or an appeal).
+1. Open the answer (a teacher: from **Results** or an appeal; a founder: also from the status board).
 2. Press **Override score**, type the new score (between 0 and the question's marks) and a reason. The reason is required.
 3. To go back to the calculated score, open the same dialog and choose to remove the override (a reason is required for that too).
 
-An override stays through re-runs until a founder removes it. It cannot be set for a student marked absent: take away "absent" first. Students then see "Score adjusted by admin".
+An override stays through re-runs until a teacher or founder removes it, so grading the answer again changes the calculated score but not the one set by hand. It cannot be set for a student marked absent: take away "absent" first. Students then see "Score adjusted by teacher" or "Score adjusted by admin" (just those words, never who it was or why).
 
-**Audit history** (a panel on the same answer page) lists every change to that score, newest first: who, when, old and new score and the reason.
+**Audit history** (a panel on the same answer page, for founders only) lists every change to that score, newest first: who (email and whether they were a teacher or a founder), when, old and new score and the reason. A teacher's own override is recorded there too; teachers just do not see the panel.
 
 Separately, the system quietly records every request a founder makes that changes something, and every time a founder reads results or an answer: who, what, when and whether it worked (never the contents). Founders cannot switch this off.
 
@@ -230,13 +232,13 @@ Separately, the system quietly records every request a founder makes that change
 
 These show as **could not be graded** on the status board, with a reason. Students see "Could not be graded — raise an appeal".
 
-| Reason               | What it means                                                        | What to do                                                                                                      |
-| -------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Unreadable           | Gemini could not read the page (blurry, dark, cut off)               | Upload a clearer photo and re-grade. If the handwriting really cannot be read, a founder can override the score |
-| Unsupported language | The code is not Python, C++, Java or Go                              | It cannot be graded. A founder can override the score                                                           |
-| Gemini error         | Gemini was too busy or failed three times in a row                   | Wait a few minutes and press **Grade again**. If many fail at once, see "Gemini" below                          |
-| Worker error         | The step that runs the code failed (the detail says why)             | **Grade again**. If it keeps happening, check the alarms (section 11)                                           |
-| Driver mismatch      | Gemini's wrapper changed the student's code, so the check refused it | **Grade again** (it often works the second time). If it repeats, treat the page like an unreadable one          |
+| Reason               | What it means                                                                                                                                         | What to do                                                                                                                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Unreadable           | Gemini could not read the page (blurry, dark, cut off)                                                                                                | Upload a clearer photo and re-grade. If the handwriting really cannot be read, a teacher or founder can override the score |
+| Unsupported language | The code is not Python, C++, Java or Go                                                                                                               | It cannot be graded. A teacher or founder can override the score                                                           |
+| Gemini error         | Gemini was too busy three times in a row (the answer says "Gemini is busy, so this answer could not be read. Wait a minute, then press Grade again.") | Wait a few minutes and press **Grade again**. If many fail at once, see "Gemini" below                                     |
+| Worker error         | The step that runs the code failed (the detail says why)                                                                                              | **Grade again**. If it keeps happening, check the alarms (section 11)                                                      |
+| Driver mismatch      | Gemini's wrapper changed the student's code, so the check refused it                                                                                  | **Grade again** (it often works the second time). If it repeats, treat the page like an unreadable one                     |
 
 If more than 20 answers fail in an hour you get an email (section 11).
 
@@ -365,9 +367,9 @@ Do this once, before the first real exam. It answers two questions: does Gemini 
 
 - [ ] A teacher makes three to five questions, generates and reviews the tests, approves, makes an exam and the PDF.
 - [ ] Students write the exam on paper in class. Collect **30 to 50 real sheets**, covering all four languages if possible, neat and messy handwriting, and a few crossed-out answers.
-- [ ] A batch manager uploads every photo, marks absent students, and watches the status board until nothing is queued.
+- [ ] A batch manager uploads every photo, marks absent students, and watches the status board until nothing is queued. (Batch managers do not handle appeals.)
 - [ ] Open a handful of answers by hand and compare the photo with what Gemini read.
-- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end.
+- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end: the student raises it, and the **teacher who made the practice exam** (not the batch manager) re-grades or closes it under **Appeals**. Try an override as that teacher too, and check the student sees "Score adjusted by teacher".
 
 **C. Measure Gemini**
 

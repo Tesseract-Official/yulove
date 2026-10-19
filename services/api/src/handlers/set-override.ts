@@ -18,20 +18,20 @@ import {
   requireUser,
   writeAudit,
 } from '@yulove/shared/server';
-import { loadExamInBatch } from '../lib/exams.js';
+import { loadManagedExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { questionParam } from './get-answer.js';
 
 /**
- * PUT /answers/{examId}/{studentEmail}/{q}/override (super admin only): sets, or with a null
- * score clears, an override of the question's score. The score must be from 0 to the question's
+ * PUT /answers/{examId}/{studentEmail}/{q}/override (teacher who may manage the exam, or a super
+ * admin): sets, or with a null score clears, an override of the question's score. The score must be from 0 to the question's
  * marks and a reason is required. Refused (409) for a student marked absent. The old and new
- * score and the reason are written to the audit log, and the exam total is worked out again. An
+ * score, the reason and who did it (email and role) are written to the audit log, and the exam total is worked out again. An
  * override stays through re-runs.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
-  const ctx = await requireUser(event, []); // an empty list: super admin only
-  const exam = await loadExamInBatch(ctx, pathParam(event, 'examId'));
+  const ctx = await requireUser(event, ['TEACHER']);
+  const exam = await loadManagedExam(ctx, pathParam(event, 'examId'));
   const email = normaliseEmail(pathParam(event, 'studentEmail'));
   const number = questionParam(event);
   const body = parseBody(overrideBody, event);
@@ -54,6 +54,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       score: roundScore(body.score),
       reason: body.reason,
       by: ctx.user.email,
+      byRole: ctx.user.role === 'TEACHER' ? 'TEACHER' : 'SUPER_ADMIN',
       at: new Date().toISOString(),
     };
   }
@@ -81,6 +82,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     before,
     after,
     body.reason,
+    undefined,
+    ctx.user.role,
   );
   if (next) await answersDb.setOverride(key, next);
   else await answersDb.clearOverride(key);

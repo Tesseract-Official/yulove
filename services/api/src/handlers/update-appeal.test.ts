@@ -14,6 +14,7 @@ import {
   seedGradingWorld,
   TEACHER_A,
   TEACHER_B,
+  TEACHER_C,
 } from '../test-utils/answers.js';
 import { handler as createAppeal } from './create-appeal.js';
 import { handler as myExam } from './get-my-exam-result.js';
@@ -58,7 +59,7 @@ beforeEach(() => {
 
 describe('PUT /appeals/{id}: close', () => {
   it('closes with a note, records who handled it and frees the question for a new appeal', async () => {
-    const { status, body } = await call(MANAGER, {
+    const { status, body } = await call(TEACHER_A, {
       status: 'CLOSED',
       note: 'The marking was right',
     });
@@ -67,12 +68,12 @@ describe('PUT /appeals/{id}: close', () => {
     expect(body.appeal).toMatchObject({
       status: 'CLOSED',
       note: 'The marking was right',
-      handledBy: MANAGER,
+      handledBy: TEACHER_A,
     });
     expect(appeal()).toMatchObject({
       status: 'CLOSED',
       note: 'The marking was right',
-      handledBy: MANAGER,
+      handledBy: TEACHER_A,
     });
     expect(answer()).not.toHaveProperty('openAppealId');
     expect(sent()).toHaveLength(0);
@@ -80,8 +81,8 @@ describe('PUT /appeals/{id}: close', () => {
   });
 
   it('needs a note', async () => {
-    expect((await call(MANAGER, { status: 'CLOSED' })).status).toBe(422);
-    expect((await call(MANAGER, { status: 'CLOSED', note: '  ' })).status).toBe(422);
+    expect((await call(TEACHER_A, { status: 'CLOSED' })).status).toBe(422);
+    expect((await call(TEACHER_A, { status: 'CLOSED', note: '  ' })).status).toBe(422);
     expect(appeal()?.status).toBe('OPEN');
   });
 
@@ -97,7 +98,7 @@ describe('PUT /appeals/{id}: close', () => {
   });
 
   it('shows the student the status and the note', async () => {
-    await call(MANAGER, { status: 'CLOSED', note: 'The marking was right' });
+    await call(TEACHER_A, { status: 'CLOSED', note: 'The marking was right' });
     const { body } = await invoke(
       myExam,
       makeEvent({ method: 'GET', path: '/me/exams/x', email: S1, pathParameters: { id: EXAM_ID } }),
@@ -106,7 +107,7 @@ describe('PUT /appeals/{id}: close', () => {
       status: 'CLOSED',
       note: 'The marking was right',
     });
-    expect(JSON.stringify(body)).not.toContain(MANAGER);
+    expect(JSON.stringify(body)).not.toContain(TEACHER_A);
   });
 });
 
@@ -137,7 +138,7 @@ describe('PUT /appeals/{id}: RERUN', () => {
   });
 
   it('works without a note', async () => {
-    expect((await call(MANAGER, { status: 'RERUN' })).status).toBe(200);
+    expect((await call(TEACHER_A, { status: 'RERUN' })).status).toBe(200);
     expect(appeal()).not.toHaveProperty('note');
   });
 
@@ -149,12 +150,12 @@ describe('PUT /appeals/{id}: RERUN', () => {
         override: { score: 9, reason: 'r', by: 'a@x.com', at: 't' },
       }),
     );
-    await call(MANAGER, { status: 'RERUN' });
+    await call(TEACHER_A, { status: 'RERUN' });
     expect(answer()?.override).toMatchObject({ score: 9 });
   });
 
   it('lets the student appeal again afterwards', async () => {
-    await call(MANAGER, { status: 'RERUN' });
+    await call(TEACHER_A, { status: 'RERUN' });
     const again = await invoke(
       createAppeal,
       makeEvent({
@@ -169,21 +170,21 @@ describe('PUT /appeals/{id}: RERUN', () => {
 
   it('leaves the appeal OPEN when the answer cannot be graded again', async () => {
     db.put('ExamStudents', examStudentRow(S1, { absent: true }));
-    expect((await call(MANAGER, { status: 'RERUN' })).status).toBe(409);
+    expect((await call(TEACHER_A, { status: 'RERUN' })).status).toBe(409);
     expect(appeal()).toMatchObject({ status: 'OPEN' });
     expect(appeal()).not.toHaveProperty('handledBy');
     expect(answer()?.openAppealId).toBe('ap1');
 
     db.put('ExamStudents', examStudentRow(S1));
     s3.on(HeadObjectCommand).rejects(Object.assign(new Error('nf'), { name: 'NotFound' }));
-    expect((await call(MANAGER, { status: 'RERUN' })).status).toBe(409);
+    expect((await call(TEACHER_A, { status: 'RERUN' })).status).toBe(409);
     expect(appeal()?.status).toBe('OPEN');
     expect(answer()?.attempt).toBe(1);
   });
 
   it('cannot be asked twice', async () => {
-    await call(MANAGER, { status: 'RERUN' });
-    const second = await call(MANAGER, { status: 'RERUN' });
+    await call(TEACHER_A, { status: 'RERUN' });
+    const second = await call(TEACHER_A, { status: 'RERUN' });
     expect(second.status).toBe(409);
     expect(answer()?.attempt).toBe(2);
     expect(sent()).toHaveLength(1);
@@ -193,24 +194,40 @@ describe('PUT /appeals/{id}: RERUN', () => {
 describe('who may handle an appeal', () => {
   it.each([
     ['a student', S1],
+    ['a batch manager of the exam’s batch', MANAGER],
     ['a batch manager of another batch', MANAGER_B],
+    ['a teacher of the same batch who did not make the exam', TEACHER_C],
     ['a teacher of another batch', TEACHER_B],
   ])('refuses %s with 403, changing nothing', async (_who, email) => {
     expect((await call(email, { status: 'RERUN' })).status).toBe(403);
     expect((await call(email, { status: 'CLOSED', note: 'x' })).status).toBe(403);
     expect(appeal()?.status).toBe('OPEN');
     expect(answer()?.attempt).toBe(1);
+    expect(sent()).toHaveLength(0);
   });
 
-  it('lets a super admin handle it', async () => {
-    expect((await call('super-admin@college.edu', { status: 'CLOSED', note: 'ok' })).status).toBe(
-      200,
-    );
+  it.each([
+    ['the teacher who made the exam', TEACHER_A],
+    ['a super admin', 'super-admin@college.edu'],
+  ])('lets %s close an appeal', async (_who, email) => {
+    const { status, body } = await call(email, { status: 'CLOSED', note: 'ok' });
+    expect(status).toBe(200);
+    expect(body.appeal.handledBy).toBe(email);
+  });
+
+  it.each([
+    ['the teacher who made the exam', TEACHER_A],
+    ['a super admin', 'super-admin@college.edu'],
+  ])('lets %s send the answer to be graded again', async (_who, email) => {
+    const { status, body } = await call(email, { status: 'RERUN' });
+    expect(status).toBe(200);
+    expect(body.attempt).toBe(2);
+    expect(sent()).toHaveLength(1);
   });
 
   it('answers 404 for an unknown appeal and 422 for a bad body', async () => {
-    expect((await call(MANAGER, { status: 'CLOSED', note: 'x' }, 'nope')).status).toBe(404);
-    expect((await call(MANAGER, { status: 'OPEN' })).status).toBe(422);
-    expect((await call(MANAGER, undefined)).status).toBe(422);
+    expect((await call(TEACHER_A, { status: 'CLOSED', note: 'x' }, 'nope')).status).toBe(404);
+    expect((await call(TEACHER_A, { status: 'OPEN' })).status).toBe(422);
+    expect((await call(TEACHER_A, undefined)).status).toBe(422);
   });
 });
