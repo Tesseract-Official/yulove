@@ -6,7 +6,6 @@ import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { useAppeals } from '../common/hooks.js';
 import { APPEAL_STATUS_LABEL, APPEAL_STATUS_TONE, plural } from '../common/labels.js';
 import { BatchSelect, ExamSelect } from '../common/pickers.js';
-import { useCurrentUser } from '../../session/MeContext.js';
 import { Chip, PageHeader } from '../common/ui.js';
 
 type Filter = 'ALL' | AppealStatus;
@@ -20,11 +19,10 @@ export function orderAppeals(appeals: readonly AppealSummary[]): AppealSummary[]
 const snippet = (text: string) => (text.length > 110 ? `${text.slice(0, 107)}…` : text);
 
 /**
- * The queue of appeals for one exam, for the teachers who handle them. A teacher chooses among
- * the exams they made; a super admin among all of them.
+ * The queue of appeals for one exam, for the teachers who handle them: any teacher of the batch
+ * (or a super admin) can open the published exams of that batch.
  */
 export function AppealsPage() {
-  const me = useCurrentUser();
   const [params, setParams] = useSearchParams();
   const batchId = params.get('batch') ?? '';
   const examId = params.get('exam') ?? '';
@@ -69,7 +67,6 @@ export function AppealsPage() {
           value={examId}
           onChange={(id) => select({ exam: id })}
           statuses={['PUBLISHED']}
-          only={(exam) => me.role === 'SUPER_ADMIN' || exam.createdBy === me.email}
           emptyHint="No exam in this batch has been published yet, so there are no appeals."
         />
       </div>

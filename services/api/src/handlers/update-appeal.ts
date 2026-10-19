@@ -8,11 +8,11 @@ import {
 } from '@yulove/shared';
 import { answersDb, appealsDb, requireUser } from '@yulove/shared/server';
 import { rerunAnswer } from '../lib/answers.js';
-import { loadManagedExam } from '../lib/exams.js';
+import { loadReviewableExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /**
- * PUT /appeals/{id} (teacher who may manage the exam, or a super admin): close an appeal with a
+ * PUT /appeals/{id} (teacher of the exam's batch, or a super admin): close an appeal with a
  * note, or have the answer graded again (RERUN). The reviewer is recorded as `handledBy`. The student sees
  * the status and the note.
  */
@@ -22,7 +22,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
 
   const appeal = await appealsDb.getAppeal(pathParam(event, 'id'));
   if (!appeal) throw new NotFoundError('No such appeal');
-  await loadManagedExam(ctx, appeal.examId);
+  await loadReviewableExam(ctx, appeal.examId);
 
   if (appeal.status === 'CLOSED') throw new ConflictError('This appeal is already closed');
   if (body.status === 'RERUN' && appeal.status !== 'OPEN') {

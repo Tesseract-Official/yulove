@@ -251,7 +251,6 @@ describe('PUT /answers/{examId}/{studentEmail}/{q}/override', () => {
       ['a student', S1],
       ['a batch manager of the exam’s batch', MANAGER],
       ['a batch manager of another batch', MANAGER_B],
-      ['a teacher of the same batch who did not make the exam', TEACHER_C],
       ['a teacher of another batch', TEACHER_B],
     ])('refuses %s with 403, changing nothing', async (_who, email) => {
       expect((await call(email, { score: 8, reason: 'r' })).status).toBe(403);
@@ -261,14 +260,19 @@ describe('PUT /answers/{examId}/{studentEmail}/{q}/override', () => {
       expect(row()).toBeUndefined(); // no total was worked out
     });
 
-    it('refuses a teacher who made the exam but has since been taken off its batch', async () => {
-      db.users.get(TEACHER_A)!.batchIds = ['B'];
-      expect((await call(TEACHER_A, { score: 8, reason: 'r' })).status).toBe(403);
+    it.each([
+      ['the teacher who made the exam', TEACHER_A],
+      ['another teacher of the batch', TEACHER_C],
+    ])('refuses %s once they have been taken off the batch', async (_who, email) => {
+      db.users.get(email)!.batchIds = ['B'];
+      expect((await call(email, { score: 8, reason: 'r' })).status).toBe(403);
       expect(answer()).not.toHaveProperty('override');
+      expect(entries()).toHaveLength(0);
     });
 
     it.each([
       ['the teacher who made the exam', TEACHER_A, 'TEACHER'],
+      ['another teacher of the batch', TEACHER_C, 'TEACHER'],
       ['a super admin', ADMIN, 'SUPER_ADMIN'],
     ] as const)('lets %s set and clear an override', async (_who, email, role) => {
       const set = await call(email, { score: 8, reason: 'Viva' });
@@ -412,14 +416,52 @@ describe('GET /answers/{examId}/{studentEmail}/{q}/audit', () => {
   });
 
   it.each([
-    ['a teacher', TEACHER_A],
-    ['a batch manager', MANAGER],
+    ['a batch manager of the batch', MANAGER],
+    ['a batch manager of another batch', MANAGER_B],
+    ['a teacher of another batch', TEACHER_B],
     ['a student', S1],
   ])('is refused to %s with 403', async (_who, email) => {
     await call(ADMIN, { score: 8, reason: 'secret reason' });
     const result = await history(email);
     expect(result.status).toBe(403);
     expect(JSON.stringify(result.body)).not.toContain('secret reason');
+  });
+
+  it.each([
+    ['the teacher who made the exam', TEACHER_A],
+    ['another teacher of the batch', TEACHER_C],
+    ['a super admin', ADMIN],
+  ])('is shown to %s, with the email and role of each person', async (_who, email) => {
+    await call(TEACHER_A, { score: 8, reason: 'By the teacher' });
+    await call(ADMIN, { score: 6, reason: 'By a founder' });
+
+    const { status, body } = await history(email);
+
+    expect(status).toBe(200);
+    expect(
+      body.entries.map((e: { actor: string; actorRole: string }) => [e.actor, e.actorRole]),
+    ).toEqual([
+      [ADMIN, 'SUPER_ADMIN'],
+      [TEACHER_A, 'TEACHER'],
+    ]);
+  });
+
+  it.each([
+    ['the teacher who made the exam', TEACHER_A],
+    ['another teacher of the batch', TEACHER_C],
+  ])('is refused to %s once they have been taken off the batch', async (_who, email) => {
+    await call(ADMIN, { score: 8, reason: 'secret reason' });
+    db.users.get(email)!.batchIds = ['B'];
+    const result = await history(email);
+    expect(result.status).toBe(403);
+    expect(JSON.stringify(result.body)).not.toContain('secret reason');
+  });
+
+  it('is not recorded as an audit request when a teacher reads it', async () => {
+    await history(TEACHER_C);
+    expect(
+      db.all<AuditLogItem>('AuditLog').filter((e) => e.entityKey.startsWith('request#')),
+    ).toHaveLength(0);
   });
 
   it('is itself recorded when a super admin reads it', async () => {

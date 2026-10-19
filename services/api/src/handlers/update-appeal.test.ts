@@ -196,7 +196,6 @@ describe('who may handle an appeal', () => {
     ['a student', S1],
     ['a batch manager of the exam’s batch', MANAGER],
     ['a batch manager of another batch', MANAGER_B],
-    ['a teacher of the same batch who did not make the exam', TEACHER_C],
     ['a teacher of another batch', TEACHER_B],
   ])('refuses %s with 403, changing nothing', async (_who, email) => {
     expect((await call(email, { status: 'RERUN' })).status).toBe(403);
@@ -208,6 +207,7 @@ describe('who may handle an appeal', () => {
 
   it.each([
     ['the teacher who made the exam', TEACHER_A],
+    ['another teacher of the batch', TEACHER_C],
     ['a super admin', 'super-admin@college.edu'],
   ])('lets %s close an appeal', async (_who, email) => {
     const { status, body } = await call(email, { status: 'CLOSED', note: 'ok' });
@@ -217,12 +217,24 @@ describe('who may handle an appeal', () => {
 
   it.each([
     ['the teacher who made the exam', TEACHER_A],
+    ['another teacher of the batch', TEACHER_C],
     ['a super admin', 'super-admin@college.edu'],
   ])('lets %s send the answer to be graded again', async (_who, email) => {
     const { status, body } = await call(email, { status: 'RERUN' });
     expect(status).toBe(200);
     expect(body.attempt).toBe(2);
     expect(sent()).toHaveLength(1);
+  });
+
+  it.each([
+    ['the teacher who made the exam', TEACHER_A],
+    ['another teacher of the batch', TEACHER_C],
+  ])('refuses %s once they have been taken off the batch', async (_who, email) => {
+    db.users.get(email)!.batchIds = ['B'];
+    expect((await call(email, { status: 'CLOSED', note: 'x' })).status).toBe(403);
+    expect((await call(email, { status: 'RERUN' })).status).toBe(403);
+    expect(appeal()?.status).toBe('OPEN');
+    expect(sent()).toHaveLength(0);
   });
 
   it('answers 404 for an unknown appeal and 422 for a bad body', async () => {

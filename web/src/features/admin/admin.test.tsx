@@ -142,7 +142,7 @@ describe('teachers and batch managers', () => {
     });
 
     await userEvent.type(await screen.findByLabelText('Name'), 'New Person');
-    await userEvent.type(screen.getByLabelText('College email'), 'new@college.edu');
+    await userEvent.type(screen.getByLabelText('Email'), 'new@college.edu');
     await userEvent.selectOptions(screen.getByLabelText('Role'), 'TEACHER');
     const form = screen.getByLabelText('Name').closest('form') as HTMLElement;
     await userEvent.click(within(form).getByLabelText('Batch B'));
@@ -167,7 +167,7 @@ describe('teachers and batch managers', () => {
     });
 
     await userEvent.type(await screen.findByLabelText('Name'), 'M');
-    await userEvent.type(screen.getByLabelText('College email'), 'm@college.edu');
+    await userEvent.type(screen.getByLabelText('Email'), 'm@college.edu');
     await userEvent.selectOptions(screen.getByLabelText('Role'), 'BATCH_MANAGER');
     await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
 
@@ -185,22 +185,55 @@ describe('teachers and batch managers', () => {
     expect(await screen.findByText('Type the person’s name.')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Name'), 'Someone');
-    await userEvent.type(screen.getByLabelText('College email'), 'not-an-email');
+    await userEvent.type(screen.getByLabelText('Email'), 'not-an-email');
     await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
-    expect(await screen.findByText(/Type a valid college email address/)).toBeInTheDocument();
+    expect(
+      await screen.findByText('Type a valid email address, for example name@example.com.'),
+    ).toBeInTheDocument();
     expect(api.callsTo('POST /staff')).toHaveLength(0);
   });
 
-  it('shows the API’s message for an email that is not allowed or already used', async () => {
+  it('shows the API’s message for an email that is already used', async () => {
     setup('/admin/staff', {
-      'POST /staff': apiError(422, 'VALIDATION_FAILED', 'Email: must end in @college.edu'),
+      'POST /staff': apiError(409, 'CONFLICT', 'someone@gmail.com already exists'),
     });
 
     await userEvent.type(await screen.findByLabelText('Name'), 'Someone');
-    await userEvent.type(screen.getByLabelText('College email'), 'someone@gmail.com');
+    await userEvent.type(screen.getByLabelText('Email'), 'someone@gmail.com');
     await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Email: must end in @college.edu');
+    expect(await screen.findByRole('alert')).toHaveTextContent('someone@gmail.com already exists');
+  });
+
+  it('says next to the email field that staff can use any Google account and students need a college email', async () => {
+    setup('/admin/staff');
+
+    const field = await screen.findByLabelText('Email');
+    expect(field).toHaveAccessibleDescription(
+      'Staff can use any Google account (Gmail or a Google Workspace email). Students need a college email.',
+    );
+  });
+
+  it.each([
+    ['a teacher with a Gmail address', 'TEACHER', 'tina@gmail.com'],
+    ['a teacher on another domain', 'TEACHER', 'tina@otheruniversity.ac.in'],
+    ['a batch manager with a Gmail address', 'BATCH_MANAGER', 'mo@gmail.com'],
+    ['a batch manager on another domain', 'BATCH_MANAGER', 'mo@workspace-company.com'],
+  ])('sends %s without asking for a college address', async (_label, role, email) => {
+    const { api } = setup('/admin/staff', {
+      'POST /staff': (call) => {
+        const body = call.body as { name: string; email: string };
+        return jsonResponse({ user: { ...body, role } }, 201);
+      },
+    });
+
+    await userEvent.type(await screen.findByLabelText('Name'), 'Person');
+    await userEvent.type(screen.getByLabelText('Email'), email);
+    await userEvent.selectOptions(screen.getByLabelText('Role'), role);
+    await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
+
+    await screen.findByText(/Added Person\./);
+    expect(api.callsTo('POST /staff')[0]?.body).toMatchObject({ email, role });
   });
 
   it('changes a person’s batches with a list of checkboxes and saves them', async () => {

@@ -27,7 +27,7 @@ function LandingPage() {
     <main className="centered">
       <div className="card">
         <h1>Paper DSA Exam Judge</h1>
-        <p className="muted">Sign in with your college Google account to see your section.</p>
+        <p className="muted">Sign in with your Google account to see your section.</p>
         {notice ? (
           <p className="notice" role="status">
             {notice}

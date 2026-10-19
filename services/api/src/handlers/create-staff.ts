@@ -7,7 +7,7 @@ import {
 } from '@yulove/shared';
 import { requireUser, usersDb } from '@yulove/shared/server';
 import { assertBatchesExist } from '../lib/batches.js';
-import { collegeEmailProblem, requireCollegeDomain } from '../lib/college-email.js';
+import { emailProblem } from '../lib/college-email.js';
 import { apiHandler, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /** POST /staff (super admin): create a teacher or batch manager. */
@@ -15,7 +15,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   await requireUser(event, []);
   const body = parseBody(createStaffBody, event);
 
-  const problem = collegeEmailProblem(body.email, requireCollegeDomain());
+  const problem = emailProblem(body.email);
   if (problem) throw new ValidationError(`Email: ${problem}`);
 
   const batchIds = [...new Set(body.batchIds)];

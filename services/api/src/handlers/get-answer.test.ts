@@ -111,13 +111,18 @@ describe('GET /answers/{examId}/{studentEmail}/{q}', () => {
 
   it.each([
     ['the teacher who made the exam', TEACHER_A, true],
+    ['another teacher of the batch', TEACHER_C, true],
     ['a super admin', 'super-admin@college.edu', true],
-    ['a teacher of the same batch who did not make the exam', TEACHER_C, false],
     ['a batch manager of the batch', MANAGER, false],
   ])('says whether %s may override: %s', async (_who, email, can) => {
     const { status, body } = await call(email);
     expect(status).toBe(200);
     expect(body.canOverride).toBe(can);
+  });
+
+  it('says a teacher taken off the batch can no longer see the answer at all', async () => {
+    db.users.get(TEACHER_C)!.batchIds = ['B'];
+    expect((await call(TEACHER_C)).status).toBe(403);
   });
 
   it('shows 0 for an absent student, and says so', async () => {

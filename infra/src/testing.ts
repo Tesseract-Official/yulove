@@ -26,21 +26,14 @@ export function buildApp(
   options: { routes?: boolean; worker?: boolean; budget?: boolean; monitoring?: boolean } = {},
 ) {
   const app = new App({ context: { ...context, 'aws:cdk:bundling-stacks': [] } });
-  const {
-    collegeDomain,
-    webOrigins,
-    geminiTestgenModel,
-    geminiTranscribeModel,
-    budgetEmail,
-    superAdminEmails,
-  } = readConfig(app.node);
+  const { collegeDomain, webOrigins, geminiTestgenModel, geminiTranscribeModel, budgetEmail } =
+    readConfig(app.node);
   const env = { account: '123456789012', region: 'ap-south-1' };
 
   const data = new DataStack(app, 'Data', { env, webOrigins });
   const auth = new AuthStack(app, 'Auth', {
     env,
     collegeDomain,
-    superAdminEmails,
     webOrigins,
     usersTable: data.tables.Users,
   });

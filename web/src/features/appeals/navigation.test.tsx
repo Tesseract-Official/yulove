@@ -97,14 +97,12 @@ describe('the teacher’s appeal queue', () => {
     createdBy: 'tara@college.edu',
   });
 
-  it('offers a teacher only the exams they made', async () => {
+  it('offers a teacher every published exam of their batch, not only the ones they made', async () => {
     open('TEACHER', '/teacher/appeals?batch=A', [MINE, OTHERS]);
 
     const select = await screen.findByLabelText('Exam');
     expect(within(select).getByRole('option', { name: /My test/ })).toBeInTheDocument();
-    expect(
-      within(select).queryByRole('option', { name: /Another teacher/ }),
-    ).not.toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /Another teacher/ })).toBeInTheDocument();
   });
 
   it('offers a super admin every exam', async () => {

@@ -15,7 +15,7 @@ Students write weekly DSA exams on A4 paper; batch managers photograph each answ
 | Paper | Exam PDF from the app, printed or projected; one question per answer page |
 | Languages | Python, C++, Java, Go; anything else is "failed to grade" |
 | Clients | Web only, React |
-| Sign-in | Google sign-in, college email domain only (plus the founders' own addresses) |
+| Sign-in | Google sign-in. Teachers, batch managers and super admins may use any Google account (Gmail or a Google Workspace email); students need their college email. Everyone must be registered in the app first |
 | Retention | Images and scores kept indefinitely for the MVP |
 | Team | 2 developers |
 | Budget | A monthly cost budget of US$60 emails the founders at 80% and 100% of actual spend. It only warns; nothing is switched off |
@@ -30,8 +30,8 @@ Four roles, each checked on every API call; a user's role comes from the `Users`
 
 | Role | Created by | Can do |
 | --- | --- | --- |
-| Super admin (founders) | Seeded at deploy from `superAdminEmails` in `infra/cdk.json` (college or personal Gmail addresses) | Everything below, on every batch; create teacher and batch-manager accounts and batches; assign teachers and batch managers to batches; override any score and handle any appeal (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log |
-| Teacher | Super admin | Assigned to batches by a super admin; create and edit their own questions; generate, review and approve test cases; create and edit exams for their batches from their own approved questions, with per-question marks; generate the PDF of exams they created; download the PDF of any exam of their batches; see the status board, each student's scores by name and every answer of their batches' exams; re-run grading; **handle appeals** and **override scores**, both only for exams they may edit (the exams they created, in batches they are still assigned to) |
+| Super admin (founders) | Seeded at deploy from `superAdminEmails` in `infra/cdk.json` (any Google account; they are founders' own addresses) | Everything below, on every batch; create teacher and batch-manager accounts and batches; assign teachers and batch managers to batches; override any score and handle any appeal (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log |
+| Teacher | Super admin | Assigned to batches by a super admin; create and edit their own questions; generate, review and approve test cases; create and edit exams for their batches from their own approved questions, with per-question marks; generate the PDF of exams they created; download the PDF of any exam of their batches; see the status board, each student's scores by name and every answer of their batches' exams; re-run grading; **handle appeals**, **override scores** and read an answer's score history, for every exam of the batches they are assigned to (not only the exams they created) |
 | Batch manager | Super admin | Assigned to one or more batches; upload the student CSV; upload one cropped photo per student per question; mark a student absent; see the status board and answers; download the exam PDF; publish results; re-run grading. Batch managers do not see or handle appeals |
 | Student | Batch manager (CSV) | After publish: see own marks per question and which test cases failed; raise an appeal on a question |
 
@@ -68,7 +68,7 @@ The Node.js worker is the only place pass or fail is decided. Image bytes go fro
 | Component | Choice | Notes |
 | --- | --- | --- |
 | Frontend | React single-page app (Vite) hosted on Vercel | Separate screens per role; crop and compress before upload. Reads `/config.json` at start (API URL, Cognito domain, client id), so no deployment value is built in. Served with a Content-Security-Policy that allows only its own scripts and the API, Cognito and photo-bucket hosts, plus HSTS, frame, referrer and permissions headers |
-| Sign-in | Cognito user pool, Google identity provider, hosted UI with the authorization-code flow (PKCE) | Pre-sign-up check on college domain (or a founder address from `superAdminEmails`) and the `Users` table. The ID token lasts 1 hour and a refresh token 1 day; the app renews the ID token with the refresh token and keeps the session in the browser tab's `sessionStorage` (it survives a reload, not closing the tab). After a day, or if renewal fails, the user signs in again |
+| Sign-in | Cognito user pool, Google identity provider, hosted UI with the authorization-code flow (PKCE) | Pre-sign-up check, decided by the person's `Users` record alone: they must be registered and active; teachers, batch managers and super admins may use any email address, students only one on the college domain. Nothing the sign-in request says about role or domain is trusted. (Cognito runs it at a person's first sign-in; after that every API call checks the `Users` record again, so deactivating someone or changing their role takes effect at once.) The ID token lasts 1 hour and a refresh token 1 day; the app renews the ID token with the refresh token and keeps the session in the browser tab's `sessionStorage` (it survives a reload, not closing the tab). After a day, or if renewal fails, the user signs in again |
 | API | API Gateway HTTP API + one Lambda per route, TypeScript on Node.js 22 | Types shared with the React app. Every route goes through the same wrapper (error mapping, super admin audit). Requests are limited to 50 per second, with a burst of 100. CORS allows only the web origins listed in `webOrigin` in `infra/cdk.json`, which also set the Cognito callback and logout URLs and the bucket's CORS |
 | Queues | SQS FIFO × 3: transcribe, execute, results | Visibility timeouts 12, 10 and 3 minutes. Content-based IDs off; dedup ID includes attempt. No dead-letter queues |
 | AI | Gemini API from Lambda, structured JSON output | API key in Secrets Manager; temperature 0. The model is set per job in `infra/cdk.json`, and nowhere else: `geminiTestgenModel` (test generation) and `geminiTranscribeModel` (transcription). Both are currently `gemini-3.5-flash-lite`, a temporary choice while the free quota of `gemini-3.6-flash` is used up; switching back means changing only those two values and redeploying |
@@ -181,7 +181,7 @@ If you later want stronger isolation (each run in its own container with network
 
 ## Data model
 
-Eight DynamoDB tables (one per entity, simpler for two people than single-table design) and one versioned S3 bucket; a user's college email (lower case) is their ID everywhere.
+Eight DynamoDB tables (one per entity, simpler for two people than single-table design) and one versioned S3 bucket; a user's email (lower case) is their ID everywhere, and each email has exactly one role.
 
 | Table | Key (partition / sort) | Main fields | Index |
 | --- | --- | --- | --- |
@@ -218,9 +218,9 @@ Tests live once per question version, not next to each image.
 
 All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda then loads the caller's role and batch assignments from `Users` and rejects anything outside them. Errors are JSON `{ "error": { "code", "message" } }` with status 401 (no usable identity), 403 (not allowed), 404, 409 (conflicts with the current state), 422 (invalid input) or 5xx.
 
-**Sign-in:** Cognito user pool with Google as the identity provider. A pre-sign-up Lambda rejects any email that is neither on the college domain nor one of the founders' addresses (`superAdminEmails` in `infra/cdk.json`), and any email not already in `Users`, so only pre-registered people can log in.
+**Sign-in:** Cognito user pool with Google as the identity provider. A pre-sign-up Lambda looks the email up in `Users` and rejects it if there is no record, if the person is deactivated, or if the record is a student whose email is not on the college domain (`collegeDomain` in `infra/cdk.json`). Staff records (teacher, batch manager, super admin) may use any email domain. Only pre-registered people can log in. Google's own consent screen for the sign-in app must allow outside accounts (type External), or Google refuses them before this check.
 
-"Of the batch" below means a batch the caller is assigned to (a student: their own batch). Super admins can call every endpoint and use every batch. "Teacher who may edit the exam" means the teacher who created the exam while still assigned to its batch (the same rule as editing the exam or making its PDF); other teachers of the batch, batch managers and students are refused with 403.
+"Of the batch" below means a batch the caller is assigned to (a student: their own batch). Super admins can call every endpoint and use every batch. "Teacher of the batch" means a teacher assigned to the exam's batch right now (any teacher of it, not only the one who made the exam); a teacher of another batch, a teacher taken off the batch, batch managers and students are refused with 403. Editing an exam or making its PDF stays with the teacher who created it.
 
 | Method and path | Who | Does |
 | --- | --- | --- |
@@ -251,10 +251,10 @@ All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda 
 | `GET /exams/{id}/results` | Teacher | Every student's per-question and total scores, by name |
 | `GET /answers/{examId}/{studentEmail}/{q}` | Batch manager, teacher | Image link (15 minutes), raw and corrected transcription, fixes, verdicts, and whether the caller may override it |
 | `POST /answers/{examId}/{studentEmail}/{q}/rerun` | Batch manager, teacher | Re-run grading; new score replaces old |
-| `GET /appeals?examId=&status=` | Teacher who may edit the exam | List appeals of an exam |
-| `PUT /appeals/{id}` | Teacher who may edit the exam | Close an appeal with a note, or send the answer to be graded again |
-| `PUT /answers/{examId}/{studentEmail}/{q}/override` | Teacher who may edit the exam | Set or clear an override score with a reason (audited with the caller's email and role) |
-| `GET /answers/{examId}/{studentEmail}/{q}/audit` | Super admin | The score changes recorded for an answer, newest first, with who made each (email and role) |
+| `GET /appeals?examId=&status=` | Teacher of the batch | List appeals of an exam |
+| `PUT /appeals/{id}` | Teacher of the batch | Close an appeal with a note, or send the answer to be graded again |
+| `PUT /answers/{examId}/{studentEmail}/{q}/override` | Teacher of the batch | Set or clear an override score with a reason (audited with the caller's email and role) |
+| `GET /answers/{examId}/{studentEmail}/{q}/audit` | Teacher of the batch | The score changes recorded for an answer, newest first, with who made each (email and role) |
 | `GET /me/exams` · `GET /me/exams/{id}` | Student | Published exams of their batch; marks per question and failed tests |
 | `POST /appeals` | Student | Appeal one question with a message (up to 1,000 characters) |
 
@@ -280,11 +280,11 @@ A student never sees the photo, the transcription, the corrected code, the fixes
 **Appeals.**
 
 1. The student appeals one question with a short message. One open appeal per question at a time.
-2. The teacher who may edit the exam (or a super admin) opens it and sees the photo, raw transcription, corrected code with the list of fixes, and the verdicts.
+2. A teacher of the exam's batch (or a super admin) opens it and sees the photo, raw transcription, corrected code with the list of fixes, and the verdicts.
 3. They either have a better crop uploaded and re-run (only batch managers and super admins can upload photos, so a teacher asks a batch manager to), re-run as is, or close it with a note (required). A re-run's new calculated score replaces the old one; an override still wins over it. An appeal is `OPEN`, then `RERUN` (graded again) or `CLOSED`.
 4. The student sees the appeal status and the reviewer's note.
 
-**Overrides.** A teacher (for exams they may edit) or a super admin can override a score, with a required reason; the score must be from 0 to the question's marks. The audit log keeps the actor and their role, time, old and new score, and reason; the stored override also remembers the role of who made it, so the student's view shows "Score adjusted by teacher" or "Score adjusted by admin" (overrides from before teachers could override read as admin). Super admins can read an answer's score history; teachers cannot. An override stays in place through re-runs until a teacher or super admin clears it. An override can't be set on a student marked absent (409); unmark absent first.
+**Overrides.** A teacher of the exam's batch or a super admin can override a score, with a required reason; the score must be from 0 to the question's marks. The audit log keeps the actor and their role, time, old and new score, and reason; the stored override also remembers the role of who made it, so the student's view shows "Score adjusted by teacher" or "Score adjusted by admin" (overrides from before teachers could override read as admin). Teachers of the batch and super admins can read an answer's score history (everyone's email and role); students never can. An override stays in place through re-runs until a teacher or super admin clears it. An override can't be set on a student marked absent (409); unmark absent first.
 
 **Super admin audit.** The API wrapper that every route goes through writes an audit entry for each request a super admin makes with POST, PUT, PATCH or DELETE, and for their reads of `GET /exams/{id}/results` and `GET /answers/...`: actor, method, path, target ids, time and outcome (success, denied, rejected or error). Request bodies are never stored. If an entry cannot be written, the request still completes and the entry is logged as an error.
 
@@ -319,7 +319,7 @@ Before the first graded exam, run one practice exam on 30–50 real answer sheet
 **Open items:**
 
 - [x] Pick the Gemini model: `gemini-3.5-flash-lite` for both jobs for now (the free quota of `gemini-3.6-flash` is used up). Go back to `gemini-3.6-flash`, or another tier, by changing `infra/cdk.json` once a paid key is in place, and measure it on the practice sheets
-- [x] Confirm the college email domain for the sign-in check (`collegeDomain` in `infra/cdk.json`)
+- [x] Confirm the college email domain for students' sign-in (`collegeDomain` in `infra/cdk.json`); staff are not limited to it
 - [x] Decide how students leave a batch or the college: they are deactivated, never deleted (`PUT /users/{email}/active`, switches on the Staff page and the batch manager's Students page)
 - [ ] Decide whether teachers can paste their own reference solution instead of Gemini's
 - [ ] Run the practice exam and record how accurate the transcription is

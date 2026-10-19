@@ -58,7 +58,6 @@ export const ROUTES: readonly RouteDef[] = [
     path: '/staff',
     handler: 'create-staff',
     permissions: { tables: { Users: 'readWrite', Batches: 'read' } },
-    needsCollegeDomain: true,
   },
   {
     method: HttpMethod.PUT,

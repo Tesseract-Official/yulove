@@ -13,6 +13,7 @@ export * from './questions.js';
 export * from './schemas.js';
 export * from './scoring.js';
 export * from './sentences.js';
+export * from './sign-in.js';
 export * from './student-view.js';
 export * from './tables.js';
 export * from './types.js';

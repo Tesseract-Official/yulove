@@ -5,16 +5,18 @@ import {
   type AuditHistoryResponse,
 } from '@yulove/shared';
 import { answerEntityKey, answersDb, auditLogDb, requireUser } from '@yulove/shared/server';
+import { loadReviewableExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { questionParam } from './get-answer.js';
 
 /**
- * GET /answers/{examId}/{studentEmail}/{q}/audit (super admin only): everything recorded about
- * changes to this answer's score, newest first.
+ * GET /answers/{examId}/{studentEmail}/{q}/audit (teacher of the exam's batch, or a super admin):
+ * everything recorded about changes to this answer's score, newest first, with who made each.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
-  await requireUser(event, []); // an empty list: super admin only
+  const ctx = await requireUser(event, ['TEACHER']);
   const examId = pathParam(event, 'examId');
+  await loadReviewableExam(ctx, examId);
   const email = normaliseEmail(pathParam(event, 'studentEmail'));
   const number = questionParam(event);
 

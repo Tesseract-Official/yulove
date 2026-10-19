@@ -50,24 +50,43 @@ describe('who sees the score tools', () => {
     expect(api.callsTo(OVERRIDE_ROUTE)).toHaveLength(0);
   });
 
-  it('does not show them to a teacher whose scope does not include the exam', async () => {
+  it('does not show them to a teacher who is not assigned to the exam’s batch', async () => {
     const api = open('TEACHER', {
       'GET /answers/:examId/:studentEmail/:q': answerDetail({ canOverride: false }),
     });
 
     await screen.findByText(/marks$/);
     expect(screen.queryByRole('button', { name: 'Override score' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Audit history' })).not.toBeInTheDocument();
     expect(screen.queryByText('Score tools')).not.toBeInTheDocument();
     expect(api.callsTo(OVERRIDE_ROUTE)).toHaveLength(0);
+    expect(api.callsTo('GET /answers/:examId/:studentEmail/:q/audit')).toHaveLength(0);
   });
 
-  it('shows Override score, but not the history, to a teacher in scope', async () => {
-    const api = open('TEACHER');
+  it('shows Override score and Audit history to a teacher of the batch', async () => {
+    open('TEACHER', {
+      'GET /answers/:examId/:studentEmail/:q/audit': {
+        examId: EXAM_ID,
+        studentEmail: 's1@college.edu',
+        questionNumber: 1,
+        entries: [],
+      },
+    });
 
     expect(await screen.findByRole('button', { name: 'Override score' })).toBeInTheDocument();
     expect(screen.getByText('Score tools')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Audit history' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Audit history' })).toBeInTheDocument();
+  });
+
+  it('asks for the history only when it is opened', async () => {
+    const api = open('TEACHER');
+
+    await screen.findByRole('button', { name: 'Audit history' });
     expect(api.callsTo('GET /answers/:examId/:studentEmail/:q/audit')).toHaveLength(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Audit history' }));
+    await waitFor(() =>
+      expect(api.callsTo('GET /answers/:examId/:studentEmail/:q/audit')).toHaveLength(1),
+    );
   });
 
   it('shows both to a super admin', async () => {
@@ -145,40 +164,43 @@ describe('who sees the score tools', () => {
 });
 
 describe('the score history', () => {
-  it('shows each change with the email and role of who made it, for a super admin', async () => {
-    open('SUPER_ADMIN', {
-      'GET /answers/:examId/:studentEmail/:q/audit': {
-        examId: EXAM_ID,
-        studentEmail: 's1@college.edu',
-        questionNumber: 1,
-        entries: [
-          auditEntry({
-            actor: 'admin@college.edu',
-            actorRole: 'SUPER_ADMIN',
-            timestamp: '2026-10-27T09:00:00.000Z',
-            reason: 'Second',
-          }),
-          auditEntry({
-            actor: 'tina@college.edu',
-            actorRole: 'TEACHER',
-            timestamp: '2026-10-26T09:00:00.000Z',
-            reason: 'First',
-          }),
-          auditEntry({
-            actor: 'old@college.edu',
-            timestamp: '2026-10-25T09:00:00.000Z',
-            reason: 'Before roles were recorded',
-          }),
-        ],
-      },
-    });
-    await userEvent.click(await screen.findByRole('button', { name: 'Audit history' }));
+  it.each(['SUPER_ADMIN', 'TEACHER'] as const)(
+    'shows each change with the email and role of who made it, for a %s',
+    async (role) => {
+      open(role, {
+        'GET /answers/:examId/:studentEmail/:q/audit': {
+          examId: EXAM_ID,
+          studentEmail: 's1@college.edu',
+          questionNumber: 1,
+          entries: [
+            auditEntry({
+              actor: 'admin@college.edu',
+              actorRole: 'SUPER_ADMIN',
+              timestamp: '2026-10-27T09:00:00.000Z',
+              reason: 'Second',
+            }),
+            auditEntry({
+              actor: 'tina@college.edu',
+              actorRole: 'TEACHER',
+              timestamp: '2026-10-26T09:00:00.000Z',
+              reason: 'First',
+            }),
+            auditEntry({
+              actor: 'old@college.edu',
+              timestamp: '2026-10-25T09:00:00.000Z',
+              reason: 'Before roles were recorded',
+            }),
+          ],
+        },
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Audit history' }));
 
-    const list = await screen.findByRole('list', { name: 'Audit history' });
-    expect(within(list).getByText(/By tina@college.edu \(Teacher\)/)).toBeInTheDocument();
-    expect(within(list).getByText(/By admin@college.edu \(Super admin\)/)).toBeInTheDocument();
-    expect(within(list).getByText(/By old@college.edu ·/)).toBeInTheDocument();
-  });
+      const list = await screen.findByRole('list', { name: 'Audit history' });
+      expect(within(list).getByText(/By tina@college.edu \(Teacher\)/)).toBeInTheDocument();
+      expect(within(list).getByText(/By admin@college.edu \(Super admin\)/)).toBeInTheDocument();
+      expect(within(list).getByText(/By old@college.edu ·/)).toBeInTheDocument();
+    },
+  );
 });
 
 describe('validateOverride', () => {

@@ -11,14 +11,8 @@ import { QueueStack } from './stacks/queue-stack.js';
 import { WorkerStack } from './stacks/worker-stack.js';
 
 const app = new App();
-const {
-  collegeDomain,
-  webOrigins,
-  geminiTestgenModel,
-  geminiTranscribeModel,
-  budgetEmail,
-  superAdminEmails,
-} = readConfig(app.node);
+const { collegeDomain, webOrigins, geminiTestgenModel, geminiTranscribeModel, budgetEmail } =
+  readConfig(app.node);
 const env = { account: process.env['CDK_DEFAULT_ACCOUNT'], region: REGION };
 
 const data = new DataStack(app, 'DsaJudgeData', { env, webOrigins });
@@ -26,7 +20,6 @@ const data = new DataStack(app, 'DsaJudgeData', { env, webOrigins });
 const auth = new AuthStack(app, 'DsaJudgeAuth', {
   env,
   collegeDomain,
-  superAdminEmails,
   webOrigins,
   usersTable: data.tables.Users,
 });

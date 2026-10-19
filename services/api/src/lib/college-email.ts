@@ -15,6 +15,14 @@ export function collegeEmailProblem(email: string, collegeDomain: string): strin
   return undefined;
 }
 
+/**
+ * Why this email cannot be used for a teacher or batch manager, or undefined when it is a valid
+ * address. Staff may use any domain (Gmail, another Workspace); only students need the college's.
+ */
+export function emailProblem(email: string): string | undefined {
+  return EMAIL_SHAPE.test(normaliseEmail(email)) ? undefined : 'not a valid email address';
+}
+
 export function requireCollegeDomain(): string {
   const domain = process.env['COLLEGE_DOMAIN'];
   if (!domain) throw new Error('Missing environment variable COLLEGE_DOMAIN');

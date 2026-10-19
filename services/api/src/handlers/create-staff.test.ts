@@ -65,9 +65,6 @@ describe('POST /staff', () => {
   });
 
   it.each([
-    ['an email outside the college domain', { email: 'x@gmail.com', name: 'X', role: 'TEACHER' }],
-    ['a look-alike domain', { email: 'x@college.edu.evil.com', name: 'X', role: 'TEACHER' }],
-    ['a sub-domain', { email: 'x@mail.college.edu', name: 'X', role: 'TEACHER' }],
     ['a student role', { email: 'x@college.edu', name: 'X', role: 'STUDENT' }],
     ['a super admin role', { email: 'x@college.edu', name: 'X', role: 'SUPER_ADMIN' }],
     [
@@ -75,11 +72,47 @@ describe('POST /staff', () => {
       { email: 'x@college.edu', name: 'X', role: 'TEACHER', batchIds: ['NOPE'] },
     ],
     ['a bad email', { email: 'nope', name: 'X', role: 'TEACHER' }],
+    ['an email with no domain dot', { email: 'x@localhost', name: 'X', role: 'TEACHER' }],
+    ['an email with a space inside', { email: 'x y@gmail.com', name: 'X', role: 'TEACHER' }],
     ['a missing name', { email: 'x@college.edu', role: 'TEACHER' }],
     ['no body', undefined],
   ])('answers 422 for %s', async (_label, body) => {
     const before = db.users.size;
     expect((await call(SUPER, body)).status).toBe(422);
     expect(db.users.size).toBe(before);
+  });
+});
+
+describe('POST /staff: staff may use any email domain', () => {
+  it.each([
+    ['a teacher with a Gmail address', 'tina@gmail.com', 'TEACHER'],
+    ['a teacher on another domain', 'tina@otheruniversity.ac.in', 'TEACHER'],
+    ['a batch manager with a Gmail address', 'mo@gmail.com', 'BATCH_MANAGER'],
+    ['a batch manager on another domain', 'mo@workspace-company.com', 'BATCH_MANAGER'],
+    ['a teacher on a look-alike of the college domain', 'x@college.edu.evil.com', 'TEACHER'],
+    ['a teacher on a sub-domain of the college', 'x@mail.college.edu', 'TEACHER'],
+  ])('creates %s', async (_label, email, role) => {
+    const { status, body } = await call(SUPER, { email, name: 'Person', role, batchIds: ['A'] });
+
+    expect(status).toBe(201);
+    expect(body.user).toMatchObject({ email, role, batchIds: ['A'] });
+    expect(db.users.get(email)).toMatchObject({ role, active: true });
+  });
+
+  it('keeps the address lower case and trimmed', async () => {
+    const { status } = await call(SUPER, {
+      email: '  Tina@GMAIL.com ',
+      name: 'Tina',
+      role: 'TEACHER',
+    });
+    expect(status).toBe(201);
+    expect(db.users.has('tina@gmail.com')).toBe(true);
+  });
+
+  it('no longer needs the college domain to be configured', async () => {
+    delete process.env['COLLEGE_DOMAIN'];
+    expect(
+      (await call(SUPER, { email: 'tina@gmail.com', name: 'Tina', role: 'TEACHER' })).status,
+    ).toBe(201);
   });
 });

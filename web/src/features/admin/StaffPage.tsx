@@ -179,7 +179,7 @@ function AddStaffForm({ batches }: { batches: Batch[] }) {
     setAdded(undefined);
     if (name.trim() === '') return setProblem('Type the person’s name.');
     if (!EMAIL_SHAPE.test(email.trim())) {
-      return setProblem('Type a valid college email address, for example name@college.edu.');
+      return setProblem('Type a valid email address, for example name@example.com.');
     }
     setProblem(undefined);
     create.mutate();
@@ -190,10 +190,14 @@ function AddStaffForm({ batches }: { batches: Batch[] }) {
       <Field label="Name">
         {(id) => <input id={id} value={name} onChange={(e) => setName(e.target.value)} />}
       </Field>
-      <Field label="College email" hint="They sign in with this Google account.">
-        {(id) => (
+      <Field
+        label="Email"
+        hint="Staff can use any Google account (Gmail or a Google Workspace email). Students need a college email."
+      >
+        {(id, aria) => (
           <input
             id={id}
+            {...aria}
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}

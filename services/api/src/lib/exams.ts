@@ -100,6 +100,24 @@ export async function loadManagedExam(ctx: AuthContext, examId: string): Promise
   return exam;
 }
 
+/**
+ * Whether the caller may review this exam's results: handle its appeals, override scores and read
+ * the score history. Any super admin, or any teacher assigned to the exam's batch right now (not
+ * only the teacher who made the exam). Editing the exam itself stays with mayManageExam.
+ */
+export function mayReviewExam(ctx: AuthContext, exam: ExamItem): boolean {
+  if (ctx.user.role === 'SUPER_ADMIN') return true;
+  return ctx.user.role === 'TEACHER' && ctx.canAccessBatch(exam.batchId);
+}
+
+/** The exam, if the caller may review it (see mayReviewExam): else 404, or 403 when not in its batch. */
+export async function loadReviewableExam(ctx: AuthContext, examId: string): Promise<ExamItem> {
+  const exam = await examsDb.getExam(examId);
+  if (!exam) throw new NotFoundError(`No exam ${examId}`);
+  if (!mayReviewExam(ctx, exam)) throw new ForbiddenError('You are not assigned to this batch');
+  return exam;
+}
+
 /** Same questions, in the same order, with the same marks? */
 export function sameQuestions(
   a: readonly ExamQuestionRef[],

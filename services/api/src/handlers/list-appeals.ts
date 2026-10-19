@@ -7,13 +7,12 @@ import {
   type AppealStatus,
 } from '@yulove/shared';
 import { appealsDb, requireUser, usersDb } from '@yulove/shared/server';
-import { loadManagedExam } from '../lib/exams.js';
+import { loadReviewableExam } from '../lib/exams.js';
 import { apiHandler, queryParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /**
- * GET /appeals?examId=&status= (teacher): the appeals of one exam the teacher may manage (they
- * made it and are still assigned to its batch; a super admin may read any), newest first, with the
- * student's name and roll number.
+ * GET /appeals?examId=&status= (teacher of the exam's batch, or a super admin): the appeals of one
+ * exam, newest first, with the student's name and roll number.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
@@ -26,7 +25,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   }
   const status = statusText ? (statusText as AppealStatus) : undefined;
 
-  const exam = await loadManagedExam(ctx, examId);
+  const exam = await loadReviewableExam(ctx, examId);
   const appeals = (await appealsDb.listAppealsByExam(exam.examId, status)).sort(
     (a: AppealItem, b: AppealItem) => b.createdAt.localeCompare(a.createdAt),
   );

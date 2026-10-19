@@ -53,14 +53,16 @@ describe('the sign-in callback', () => {
     oidc.signinRedirectCallback.mockRejectedValue(
       Object.assign(new Error('invalid_request'), {
         error_description:
-          'PreSignUp failed with error Sign-up is limited to college email addresses.',
+          'PreSignUp failed with error Students must sign in with their college email address.',
       }),
     );
 
     renderApp({ route: '/auth/callback?error=invalid_request', oidc });
 
     expect(await screen.findByRole('heading', { name: 'Sign-in failed' })).toBeInTheDocument();
-    expect(screen.getByText('Sign-up is limited to college email addresses.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Students must sign in with their college email address.'),
+    ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(oidc.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: '/' } });

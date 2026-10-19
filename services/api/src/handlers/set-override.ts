@@ -18,12 +18,12 @@ import {
   requireUser,
   writeAudit,
 } from '@yulove/shared/server';
-import { loadManagedExam } from '../lib/exams.js';
+import { loadReviewableExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 import { questionParam } from './get-answer.js';
 
 /**
- * PUT /answers/{examId}/{studentEmail}/{q}/override (teacher who may manage the exam, or a super
+ * PUT /answers/{examId}/{studentEmail}/{q}/override (teacher of the exam's batch, or a super
  * admin): sets, or with a null score clears, an override of the question's score. The score must be from 0 to the question's
  * marks and a reason is required. Refused (409) for a student marked absent. The old and new
  * score, the reason and who did it (email and role) are written to the audit log, and the exam total is worked out again. An
@@ -31,7 +31,7 @@ import { questionParam } from './get-answer.js';
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
-  const exam = await loadManagedExam(ctx, pathParam(event, 'examId'));
+  const exam = await loadReviewableExam(ctx, pathParam(event, 'examId'));
   const email = normaliseEmail(pathParam(event, 'studentEmail'));
   const number = questionParam(event);
   const body = parseBody(overrideBody, event);

@@ -24,7 +24,7 @@ const EXPECTED: Expected[] = [
   { routeKey: 'GET /batches', tables: { Users: 'read', Batches: 'read' } },
   { routeKey: 'GET /staff', tables: { Users: 'read' } },
   { routeKey: 'GET /exams', tables: { Users: 'read', Exams: 'read' } },
-  { routeKey: 'POST /staff', tables: { Users: 'readWrite', Batches: 'read' }, collegeDomain: true },
+  { routeKey: 'POST /staff', tables: { Users: 'readWrite', Batches: 'read' } },
   { routeKey: 'PUT /staff/{email}/batches', tables: { Users: 'readWrite', Batches: 'read' } },
   { routeKey: 'PUT /users/{email}/active', tables: { Users: 'readWrite' } },
   { routeKey: 'POST /batches', tables: { Users: 'read', Batches: 'write' } },

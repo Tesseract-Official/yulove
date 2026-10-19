@@ -32,8 +32,6 @@ export const REFRESH_TOKEN_VALIDITY = Duration.days(1);
 
 export interface AuthStackProps extends StackProps {
   collegeDomain: string;
-  /** Founders (lower case) who may sign in as super admins from a non-college address. */
-  superAdminEmails: string[];
   webOrigins: string[];
   usersTable: Table;
 }
@@ -50,10 +48,9 @@ export class AuthStack extends Stack {
     this.preSignUpFunction = createNodeFunction(this, 'PreSignUpFunction', {
       entry: serviceEntry('api/src/handlers/pre-sign-up.ts'),
       description:
-        'Rejects sign-ups outside the college domain and founder list, or not listed in Users',
+        'Lets in only people registered and active in Users: staff on any email, students on the college domain',
       environment: {
         COLLEGE_DOMAIN: props.collegeDomain,
-        SUPER_ADMIN_EMAILS: props.superAdminEmails.join(','),
         USERS_TABLE: props.usersTable.tableName,
       },
     });

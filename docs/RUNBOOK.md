@@ -131,10 +131,12 @@ AWS_PROFILE=dsa-judge pnpm seed:super-admins
 **Teachers and batch managers** are created by a founder on the website:
 
 1. Sign in, open **Teachers and batch managers**.
-2. Add the person with their college email, name and role (teacher or batch manager), and tick the batches they work with.
+2. Add the person with their email, name and role (teacher or batch manager), and tick the batches they work with. **Teachers and batch managers can use any Google account**: a Gmail address, a Google Workspace address from another organisation, or the college one. Only students need a college email.
 3. To change their batches later, edit them on the same screen.
 
-They then sign in with that college Google account. Someone who is not in the list cannot sign in at all.
+They then press **Sign in with Google** and choose that same account. Someone who is not in the list, or who has been made inactive, cannot sign in at all, whatever their address. (Students are the exception to "any address": see section 4.)
+
+**One-time Google setting.** The Google sign-in app (in the Google Cloud console, under _APIs & Services → OAuth consent screen_) must have its user type set to **External**. If it is **Internal** to one Workspace organisation, Google refuses Gmail and other-domain accounts before this app is even reached, and staff on those accounts see a Google error. Ask a developer to check it once.
 
 A teacher or batch manager only sees the batches they are assigned to. A teacher only changes the questions and exams they made themselves.
 
@@ -149,7 +151,7 @@ A batch manager can do the same for **students of their own batches**: see secti
 1. **Create the batches.** A founder opens **Batches** and adds each one (a short id such as `2026-cse-a` and a name).
 2. **Assign people to them.** Teachers and batch managers, as in section 3.
 3. **Add the students.** The batch manager opens **Add students**, chooses the file and presses **Upload students**. The file is a CSV file with four columns and a header row: name, college email, roll number, batch. Header spelling is forgiving ("College email", "Roll no" and so on). Up to 2,000 rows. The result lists each row as **created**, **updated** (already there, details refreshed) or **rejected** with the reason (for example an email outside the college domain, a roll number used twice, or a batch the manager is not assigned to). Fix the rejected rows in the file and upload again; rows already created are simply updated.
-4. **Students sign in with their college Gmail.** They open the website and press **Sign in with Google**. They only get in if they were added in step 3. New students can be added at any time; they appear in exams from their first visit.
+4. **Students sign in with their college email.** Students must use an address on the college domain; the CSV upload rejects any other, and a student record on another domain cannot sign in. They open the website and press **Sign in with Google**. They only get in if they were added in step 3. New students can be added at any time; they appear in exams from their first visit.
 5. **When a student leaves**, the batch manager opens **Students**, picks the batch, finds the student and presses their **Active / Inactive** switch, giving a reason. The student is greyed out with an **Inactive** label, can no longer use the app (they see "Your account isn't registered, or it has been made inactive"), and cannot be chosen on the upload screen; their marks and answers are kept. Press the switch again (with a reason) if they come back. A batch manager can only change students of batches they are assigned to. A CSV upload does not make an inactive student active again.
 6. **Founders never go in the student CSV.** Their addresses are blocked there on purpose.
 
@@ -170,7 +172,7 @@ Good to know:
 - If you edit a question that is already used in an exam with answers, the system makes a new version of it; the old exam keeps the old version. Changing only the title or the examples keeps the generated tests; changing anything else means generating and approving again.
 - Students write one answer per page and only the function, not the input and output code. The PDF says so.
 
-After the exam, **Results** shows every student's score per question and in total, by name. **Appeals** (section 7) are handled by teachers, and only for exams they made.
+After the exam, **Results** shows every student's score per question and in total, by name. **Appeals** (section 7) are handled by any teacher of the batch.
 
 ## 6. A normal week: batch managers
 
@@ -191,7 +193,7 @@ After the exam, **Results** shows every student's score per question and in tota
 
 Grading again after publishing is fine: the student's calculated score is replaced by the new one (a score a teacher or founder set by hand stays until they remove it; see section 8).
 
-**Batch managers do not see appeals.** Appeals are handled by the teacher who made the exam. If a student tells you they have appealed, ask them to wait for their teacher; if the teacher asks for a better photo, upload it from **Upload answers** (use **Replace photo**, then **Replace and grade again**).
+**Batch managers do not see appeals.** Appeals are handled by the batch's teachers. If a student tells you they have appealed, ask them to wait for their teacher; if the teacher asks for a better photo, upload it from **Upload answers** (use **Replace photo**, then **Replace and grade again**).
 
 ## 7. What students see, and appeals
 
@@ -206,7 +208,7 @@ Students never see the photo, the code that was read, or who handled their appea
 
 **An appeal** starts when a student presses **Raise an appeal** on one question and writes a short message (up to 1,000 characters). Only one appeal can be open per question.
 
-**Teachers** handle appeals, under **Appeals** on the Teacher menu. A teacher sees the exams they made (choose batch and exam; open ones come first); founders see every exam. Another teacher of the same batch cannot open them, and batch managers cannot see appeals at all. Anyone following an old link to the appeals pages in the Batch manager menu is sent to the teacher page (founders) or told it is not allowed (batch managers). Opening one shows the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results. Then choose:
+**Teachers** handle appeals, under **Appeals** on the Teacher menu. Any teacher assigned to the batch can open its appeals (choose batch and exam; open ones come first), not only the teacher who made the exam; founders see every exam. A teacher of another batch, or one who has been taken off the batch, cannot open them, and batch managers cannot see appeals at all. Anyone following an old link to the appeals pages in the Batch manager menu is sent to the teacher page (founders) or told it is not allowed (batch managers). Opening one shows the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results. Then choose:
 
 - **Re-grade as is**: grade the stored photo again.
 - **Upload a better photo and re-grade**: only founders can do this from the appeal, because only founders and batch managers can upload photos. A teacher who needs a better photo asks a batch manager to upload it from **Upload answers**, then presses **Refresh** here and either re-grades or closes the appeal.
@@ -216,7 +218,7 @@ After a re-grade press **Refresh** on the appeal to watch the new result. The st
 
 ## 8. Overriding a score, and the audit log
 
-A **teacher** can set a score by hand for exams they made, and so can the **founders** for any exam. Batch managers and students cannot.
+Any **teacher of the exam's batch** can set a score by hand, and so can the **founders** for any exam. Batch managers and students cannot.
 
 1. Open the answer (a teacher: from **Results** or an appeal; a founder: also from the status board).
 2. Press **Override score**, type the new score (between 0 and the question's marks) and a reason. The reason is required.
@@ -224,7 +226,7 @@ A **teacher** can set a score by hand for exams they made, and so can the **foun
 
 An override stays through re-runs until a teacher or founder removes it, so grading the answer again changes the calculated score but not the one set by hand. It cannot be set for a student marked absent: take away "absent" first. Students then see "Score adjusted by teacher" or "Score adjusted by admin" (just those words, never who it was or why).
 
-**Audit history** (a panel on the same answer page, for founders only) lists every change to that score, newest first: who (email and whether they were a teacher or a founder), when, old and new score and the reason. A teacher's own override is recorded there too; teachers just do not see the panel.
+**Audit history** (a panel on the same answer page, for teachers of the batch and founders) lists every change to that score, newest first: who (email and whether they were a teacher or a founder), when, old and new score and the reason. Students never see it, and neither do batch managers.
 
 Separately, the system quietly records every request a founder makes that changes something, and every time a founder reads results or an answer: who, what, when and whether it worked (never the contents). Founders cannot switch this off.
 
@@ -369,7 +371,7 @@ Do this once, before the first real exam. It answers two questions: does Gemini 
 - [ ] Students write the exam on paper in class. Collect **30 to 50 real sheets**, covering all four languages if possible, neat and messy handwriting, and a few crossed-out answers.
 - [ ] A batch manager uploads every photo, marks absent students, and watches the status board until nothing is queued. (Batch managers do not handle appeals.)
 - [ ] Open a handful of answers by hand and compare the photo with what Gemini read.
-- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end: the student raises it, and the **teacher who made the practice exam** (not the batch manager) re-grades or closes it under **Appeals**. Try an override as that teacher too, and check the student sees "Score adjusted by teacher".
+- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end: the student raises it, and a **teacher of the practice batch** (not the batch manager) re-grades or closes it under **Appeals**. Try an override as that teacher too, and check the student sees "Score adjusted by teacher".
 
 **C. Measure Gemini**
 

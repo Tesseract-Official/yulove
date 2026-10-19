@@ -45,13 +45,12 @@ describe('AuthStack', () => {
     });
   });
 
-  it('runs a Node.js 22 pre-sign-up Lambda configured for the college domain and Users table', () => {
+  it('runs a Node.js 22 pre-sign-up Lambda configured for the college domain and Users table, and no founder list', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs22.x',
       Environment: {
         Variables: Match.objectLike({
           COLLEGE_DOMAIN: 'college.edu',
-          SUPER_ADMIN_EMAILS: 'founder@gmail.com,cofounder@gmail.com',
           USERS_TABLE: Match.anyValue(),
         }),
       },
@@ -59,6 +58,8 @@ describe('AuthStack', () => {
     template.hasResourceProperties('AWS::Cognito::UserPool', {
       LambdaConfig: { PreSignUp: Match.anyValue() },
     });
+    // Who may sign in comes from the Users table (the role decides), not from a list in the Lambda.
+    expect(JSON.stringify(template.toJSON())).not.toContain('SUPER_ADMIN_EMAILS');
   });
 
   it('lets the pre-sign-up Lambda read the Users table and nothing else', () => {

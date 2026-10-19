@@ -11,7 +11,7 @@ import {
 } from '@yulove/shared';
 import { answersDb, examStudentsDb, requireUser } from '@yulove/shared/server';
 import { requiredEnv } from '../lib/answers.js';
-import { loadExamInBatch, mayManageExam } from '../lib/exams.js';
+import { loadExamInBatch, mayReviewExam } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 export const IMAGE_LINK_SECONDS = 15 * 60;
@@ -79,7 +79,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     verdicts: answer.verdicts ?? [],
     score: computeQuestionScore(ref.marks, answer, absent),
     override: answer.override,
-    canOverride: mayManageExam(ctx, exam),
+    // Also decides whether the web shows the score history (same rule as the history route).
+    canOverride: mayReviewExam(ctx, exam),
   };
   return { status: 200, body };
 }

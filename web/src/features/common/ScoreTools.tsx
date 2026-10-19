@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AnswerDetailResponse, AuditEntry, Role } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { ApiError, errorMessage } from '../../api/errors.js';
-import { useCurrentUser } from '../../session/MeContext.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { keys } from './hooks.js';
 import { Field, Notice } from './ui.js';
@@ -267,48 +266,42 @@ function AuditPanel({ answer }: { answer: AnswerDetailResponse }) {
 }
 
 /**
- * On an answer: change the score by hand. Shown to a super admin and to the teacher who made the
- * exam (the API says which with `canOverride`); batch managers never see it. The score history is
- * for super admins only, and its route is never called for anyone else.
+ * On an answer: change the score by hand and read who changed it before. Shown to a super admin
+ * and to any teacher of the exam's batch (the API says which with `canOverride`); batch managers
+ * and students never see it, and the history route is never called for them.
  */
 export function ScoreTools({ answer }: { answer: AnswerDetailResponse }) {
-  const me = useCurrentUser();
   const [dialog, setDialog] = useState(false);
   const [history, setHistory] = useState(false);
   const [done, setDone] = useState<string | undefined>();
 
-  const isAdmin = me.role === 'SUPER_ADMIN';
-  if (!answer.canOverride && !isAdmin) return null;
+  if (!answer.canOverride) return null;
 
   return (
     <section className="admin-tools" aria-label="Score tools">
       <h2>Score tools</h2>
       {done ? <Notice kind="success">{done}</Notice> : null}
       <div className="actions">
-        {answer.canOverride ? (
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              setDone(undefined);
-              setDialog(true);
-            }}
-          >
-            Override score
-          </button>
-        ) : null}
-        {isAdmin ? (
-          <button
-            type="button"
-            className="button"
-            aria-expanded={history}
-            onClick={() => setHistory((open) => !open)}
-          >
-            Audit history
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="button"
+          onClick={() => {
+            setDone(undefined);
+            setDialog(true);
+          }}
+        >
+          Override score
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-expanded={history}
+          onClick={() => setHistory((open) => !open)}
+        >
+          Audit history
+        </button>
       </div>
-      {isAdmin && history ? <AuditPanel answer={answer} /> : null}
+      {history ? <AuditPanel answer={answer} /> : null}
       {dialog ? (
         <OverrideDialog
           answer={answer}

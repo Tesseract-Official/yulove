@@ -62,8 +62,8 @@ describe('GET /appeals', () => {
     }
   });
 
-  it('is open to the teacher who made the exam and to a super admin', async () => {
-    for (const email of [TEACHER_A, 'super-admin@college.edu']) {
+  it('is open to the teacher who made the exam, any other teacher of the batch, and a super admin', async () => {
+    for (const email of [TEACHER_A, TEACHER_C, 'super-admin@college.edu']) {
       expect((await call(email)).status).toBe(200);
     }
   });
@@ -72,7 +72,6 @@ describe('GET /appeals', () => {
     ['a student', 's1@college.edu'],
     ['a batch manager of the exam’s batch', MANAGER],
     ['a batch manager of another batch', MANAGER_B],
-    ['a teacher of the same batch who did not make the exam', TEACHER_C],
     ['a teacher of another batch', TEACHER_B],
   ])('refuses %s with 403 and shows no appeal', async (_who, email) => {
     const { status, body } = await call(email);
@@ -80,9 +79,12 @@ describe('GET /appeals', () => {
     expect(JSON.stringify(body)).not.toContain('message 1');
   });
 
-  it('refuses a teacher who made the exam but has since been taken off its batch', async () => {
-    db.users.get(TEACHER_A)!.batchIds = ['B'];
-    expect((await call(TEACHER_A)).status).toBe(403);
+  it.each([
+    ['the teacher who made the exam', TEACHER_A],
+    ['another teacher of the batch', TEACHER_C],
+  ])('refuses %s once they have been taken off the batch', async (_who, email) => {
+    db.users.get(email)!.batchIds = ['B'];
+    expect((await call(email)).status).toBe(403);
   });
 
   it('needs an exam (422), a valid status (422) and an exam that exists (404)', async () => {
