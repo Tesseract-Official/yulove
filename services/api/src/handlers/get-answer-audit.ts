@@ -1,5 +1,6 @@
 import {
   normaliseEmail,
+  auditEntryVisibleTo,
   NotFoundError,
   type AuditEntry,
   type AuditHistoryResponse,
@@ -12,6 +13,8 @@ import { questionParam } from './get-answer.js';
 /**
  * GET /answers/{examId}/{studentEmail}/{q}/audit (teacher of the exam's batch, or a super admin):
  * everything recorded about changes to this answer's score, newest first, with who made each.
+ * A teacher gets only the entries teachers made: a super admin's are left out here, on the
+ * server, so they are not in the response at all. A super admin gets every entry.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
@@ -25,6 +28,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
 
   const history = await auditLogDb.listAuditForEntity(answerEntityKey(examId, email, number));
   const entries: AuditEntry[] = history
+    .filter((entry) => auditEntryVisibleTo(ctx.user.role, entry.actorRole))
     .map(({ timestamp, actor, actorRole, action, before, after, reason }) => ({
       timestamp,
       actor,

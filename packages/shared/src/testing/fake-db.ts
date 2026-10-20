@@ -61,8 +61,22 @@ export class FakeDb {
     this.install();
   }
 
+  /**
+   * Makes only these tables available to the code under test, the way a Lambda only gets the
+   * environment variables of the tables its route is granted: reading any other table throws
+   * "Missing environment variable ...". Undone by reset().
+   */
+  restrictTablesTo(allowed: Iterable<TableName>): void {
+    const keep = new Set(allowed);
+    for (const name of TABLE_NAMES) {
+      if (keep.has(name)) process.env[TABLE_ENV[name]] = name;
+      else delete process.env[TABLE_ENV[name]];
+    }
+  }
+
   /** Empties every table and puts the behaviour switches back. */
   reset(): void {
+    for (const name of TABLE_NAMES) process.env[TABLE_ENV[name]] = name;
     for (const rows of this.tables.values()) rows.clear();
     this.mock.resetHistory();
     this.failPuts.clear();

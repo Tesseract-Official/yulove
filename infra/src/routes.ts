@@ -345,8 +345,8 @@ export const ROUTES: readonly RouteDef[] = [
     method: HttpMethod.PUT,
     path: '/answers/{examId}/{studentEmail}/{q}/override',
     handler: 'set-override',
-    // Super admins only. Writes the override and the student's new total; the audit entry is the
-    // AuditLog PutItem every route has.
+    // Teachers of the exam's batch and super admins. Writes the override and the student's new
+    // total; the audit entry is the AuditLog PutItem every route has.
     permissions: {
       tables: { Users: 'read', Exams: 'read', ExamStudents: 'readWrite', Answers: 'readWrite' },
     },
@@ -355,7 +355,9 @@ export const ROUTES: readonly RouteDef[] = [
     method: HttpMethod.GET,
     path: '/answers/{examId}/{studentEmail}/{q}/audit',
     handler: 'get-answer-audit',
-    permissions: { tables: { Users: 'read', Answers: 'read', AuditLog: 'read' } },
+    // Exams: loadReviewableExam reads the exam to check the caller may review it. Leaving it out
+    // makes the Lambda fail on a missing EXAMS_TABLE for every caller.
+    permissions: { tables: { Users: 'read', Exams: 'read', Answers: 'read', AuditLog: 'read' } },
   },
   {
     method: HttpMethod.GET,
@@ -379,6 +381,17 @@ export const ROUTES: readonly RouteDef[] = [
         Questions: 'read',
         Appeals: 'read',
       },
+    },
+  },
+  {
+    method: HttpMethod.GET,
+    path: '/me/exams/{id}/questions/{q}/photo',
+    handler: 'get-my-answer-photo',
+    // Presigns a read of the caller's own photo; the Lambda needs GetObject on answers/* to sign it.
+    permissions: {
+      tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+      bucket: 'read',
+      bucketPrefix: ANSWERS_ONLY,
     },
   },
 ];

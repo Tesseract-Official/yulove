@@ -1,5 +1,5 @@
 import type { ExamDetailResponse } from '@yulove/shared';
-import { examHasAnswers, requireUser } from '@yulove/shared/server';
+import { examHasAnswers, makeActorResolver, requireUser } from '@yulove/shared/server';
 import { loadExamInBatch, loadQuestionVersions } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
@@ -7,7 +7,8 @@ import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/htt
  * GET /exams/{id} (teacher): the exam with each question's title and test state, whether answers
  * exist (the questions and marks are then locked), whether a PDF has been made, and whether the
  * caller may edit it (its creator or a super admin, and only while it is not published). Any
- * teacher of the exam's batch can read it.
+ * teacher of the exam's batch can read it. `createdBy` is left out when a super admin made the exam
+ * and the caller is not one.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
@@ -18,6 +19,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     examHasAnswers(exam.examId, exam.batchId),
   ]);
 
+  const createdBy = await makeActorResolver(ctx.user.role).visible(exam.createdBy);
+
   const body: ExamDetailResponse = {
     exam: {
       examId: exam.examId,
@@ -25,7 +28,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
       title: exam.title,
       date: exam.date,
       status: exam.status,
-      createdBy: exam.createdBy,
+      ...(createdBy ? { createdBy } : {}),
       publishedAt: exam.publishedAt,
       questions: versions.map(({ ref, item }) => ({
         number: ref.number,

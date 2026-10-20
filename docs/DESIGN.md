@@ -30,12 +30,12 @@ Four roles, each checked on every API call; a user's role comes from the `Users`
 
 | Role | Created by | Can do |
 | --- | --- | --- |
-| Super admin (founders) | Seeded at deploy from `superAdminEmails` in `infra/cdk.json` (any Google account; they are founders' own addresses) | Everything below, on every batch; create teacher and batch-manager accounts and batches; assign teachers and batch managers to batches; override any score and handle any appeal (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log |
+| Super admin (founders) | Seeded at deploy from `superAdminEmails` in `infra/cdk.json` (any Google account; they are founders' own addresses) | Everything below, on every batch; create teacher and batch-manager accounts and batches; assign teachers and batch managers to batches; override any score and handle any appeal (every override written to the audit log); every request a super admin makes that changes data, and their reads of results and answers, is also written to the audit log. **Everything a super admin does is applied normally but is invisible to teachers, batch managers and students** (see "Super admin actions are invisible to everyone else") |
 | Teacher | Super admin | Assigned to batches by a super admin; create and edit their own questions; generate, review and approve test cases; create and edit exams for their batches from their own approved questions, with per-question marks; generate the PDF of exams they created; download the PDF of any exam of their batches; see the status board, each student's scores by name and every answer of their batches' exams; re-run grading; **handle appeals**, **override scores** and read an answer's score history, for every exam of the batches they are assigned to (not only the exams they created) |
 | Batch manager | Super admin | Assigned to one or more batches; upload the student CSV; upload one cropped photo per student per question; mark a student absent; see the status board and answers; download the exam PDF; publish results; re-run grading. Batch managers do not see or handle appeals |
 | Student | Batch manager (CSV) | After publish: see own marks per question and which test cases failed; raise an appeal on a question |
 
-The super admin role is a normal, visible role in the system. Score overrides record who (email and role), when, old score, new score and a reason, and a student's result shows that an override was applied and whether a teacher or an admin made it (never who). Founder accounts are plain super admin users: separate from student accounts, never importable as students, with no extra restrictions.
+The super admin role is a normal, visible role in the system. Score overrides record who (email and role), when, old score, new score and a reason. A student's result shows "Score adjusted by teacher" when a teacher made the override (never who) and shows nothing but the score when a super admin did. Founder accounts are plain super admin users: separate from student accounts, never importable as students, with no extra restrictions.
 
 A batch manager or teacher can only act on batches they are assigned to; a teacher can only change questions and exams they created. A student can only read their own results, and only after the exam is published. A super admin can do everything, on every batch.
 
@@ -191,7 +191,7 @@ Eight DynamoDB tables (one per entity, simpler for two people than single-table 
 | Exams | examId | batchId, title, date, questions [number, questionId, version, marks], createdBy, status (DRAFT, READY, PUBLISHED), pdfKey, publishedBy, publishedAt | byBatch: batchId |
 | ExamStudents | examId / studentEmail | absent, totalScore, maxScore | byStudent: studentEmail |
 | Answers | examId#studentEmail / questionNumber | imageKey, attempt, status, failReason, failDetail, transcribeTries, language, rawTranscription, correctedCode, driverCode, fixes, estimatedComplexity, meetsComplexity, testsPassed, testsTotal, verdicts, score, override, openAppealId, and examId, studentEmail, examSort for the index | byExam: examId + studentEmail#questionNumber |
-| Appeals | appealId | examId, studentEmail, questionNumber, message, status (OPEN, RERUN, CLOSED), handledBy, note, createdAt | byExam: examId + status |
+| Appeals | appealId | examId, studentEmail, questionNumber, reason (PHOTO_UNCLEAR, CODE_READ_WRONG, WRONG_MARKS, OTHER; absent on appeals made before reasons existed), message, status (OPEN, RERUN, CLOSED), handledBy, note, createdAt | byExam: examId + status |
 | AuditLog | entityKey / timestamp | actor, action, before, after, reason; for super admin requests also method, path, targetIds, statusCode, outcome | byActor: actor |
 
 - `verdicts` holds one verdict per test. For small failed tests it also keeps the input, expected output and student output, each cut to 200 characters; large tests keep only the verdict. This stays well under DynamoDB's 400 KB item limit.
@@ -254,9 +254,10 @@ All endpoints sit behind API Gateway with a Cognito JWT authorizer; each Lambda 
 | `GET /appeals?examId=&status=` | Teacher of the batch | List appeals of an exam |
 | `PUT /appeals/{id}` | Teacher of the batch | Close an appeal with a note, or send the answer to be graded again |
 | `PUT /answers/{examId}/{studentEmail}/{q}/override` | Teacher of the batch | Set or clear an override score with a reason (audited with the caller's email and role) |
-| `GET /answers/{examId}/{studentEmail}/{q}/audit` | Teacher of the batch | The score changes recorded for an answer, newest first, with who made each (email and role) |
+| `GET /answers/{examId}/{studentEmail}/{q}/audit` | Teacher of the batch | The score changes recorded for an answer, newest first, with who made each (email and role). A teacher gets only the entries made by teachers; a super admin gets every entry, super admin ones included |
 | `GET /me/exams` · `GET /me/exams/{id}` | Student | Published exams of their batch; marks per question and failed tests |
-| `POST /appeals` | Student | Appeal one question with a message (up to 1,000 characters) |
+| `GET /me/exams/{id}/questions/{q}/photo` | Student | A link (5 minutes) to the caller's own graded photo for one question. 403 if the exam is not published or not in the caller's batch; 404 if there is no photo. The S3 key is never returned |
+| `POST /appeals` | Student | Appeal one question with a required reason and a message (up to 1,000 characters) |
 
 ## Results, appeals, overrides and absences
 
@@ -272,19 +273,24 @@ Students see nothing until a batch manager publishes the exam; after that, appea
 - "Did not meet the required time complexity, O(…)" when that rule zeroed the question;
 - "Could not be graded — raise an appeal" for `FAILED_TO_GRADE`;
 - "Still being graded" and "No answer was submitted" where those apply;
-- "Score adjusted by teacher" or "Score adjusted by admin" when an override applies (a word only: never the person, their email or the reason);
-- "Absent" across the exam if marked absent.
+- "Score adjusted by teacher" when a teacher's override applies (a word only: never the person, their email or the reason). A super admin's override shows no label at all: the student just sees the score;
+- "Absent" across the exam if marked absent;
+- the photo of their own answer, exactly as it was sent for grading (after crop and rotate), from the latest attempt. See "Student photo view".
 
-A student never sees the photo, the transcription, the corrected code, the fixes, the failure reason, or who handled an appeal.
+A student never sees the transcription, the corrected code, the fixes, the failure reason, another student's photo, or who handled an appeal.
+
+**Student photo view.** Each answered question shows the student's own photo, only after the exam is published. The page asks `GET /me/exams/{id}/questions/{q}/photo` for each photo. The Lambda checks the caller is a student of the exam's batch and that the exam is published, takes the student's email from the sign-in token (the path never names a student, so another student's photo can't be asked for), and returns a presigned GET link that lasts 5 minutes, made fresh on every request. The page asks again when a link is about to expire. The S3 key is never sent to the browser. Tapping the photo opens it full screen, where it can be pinched to zoom and dragged. The photo is the object at the answer's stored key, which is what grading read for the latest attempt (a replacement upload overwrites the same key and keeps the old one as an older S3 version).
 
 **Appeals.**
 
-1. The student appeals one question with a short message. One open appeal per question at a time.
-2. A teacher of the exam's batch (or a super admin) opens it and sees the photo, raw transcription, corrected code with the list of fixes, and the verdicts.
+1. The student appeals one question, choosing a required reason ("Photo is unclear or cut off", "My code was read wrong", "Wrong marks for a correct answer" or "Other") and writing a short message. The reason is stored with the appeal. One open appeal per question at a time.
+2. A teacher of the exam's batch (or a super admin) opens it and sees, together on one page, the reason, the message, the photo, the raw transcription, the corrected code with the list of fixes, and the test results. For "Photo is unclear or cut off" the page adds the note "Ask the batch manager to upload a better photo, then re-grade."
 3. They either have a better crop uploaded and re-run (only batch managers and super admins can upload photos, so a teacher asks a batch manager to), re-run as is, or close it with a note (required). A re-run's new calculated score replaces the old one; an override still wins over it. An appeal is `OPEN`, then `RERUN` (graded again) or `CLOSED`.
-4. The student sees the appeal status and the reviewer's note.
+4. The student sees the appeal status and the reviewer's note (never who handled it). An appeal closed or re-run by a super admin looks the same to the student and to teachers as one handled by a teacher, except that teachers see no handler name for it.
 
-**Overrides.** A teacher of the exam's batch or a super admin can override a score, with a required reason; the score must be from 0 to the question's marks. The audit log keeps the actor and their role, time, old and new score, and reason; the stored override also remembers the role of who made it, so the student's view shows "Score adjusted by teacher" or "Score adjusted by admin" (overrides from before teachers could override read as admin). Teachers of the batch and super admins can read an answer's score history (everyone's email and role); students never can. An override stays in place through re-runs until a teacher or super admin clears it. An override can't be set on a student marked absent (409); unmark absent first.
+**Overrides.** A teacher of the exam's batch or a super admin can override a score, with a required reason; the score must be from 0 to the question's marks. The audit log keeps the actor and their role, time, old and new score, and reason; the stored override also remembers the role of who made it, so the student's view shows "Score adjusted by teacher" for a teacher's override and no label for a super admin's (overrides from before teachers could override count as super admin overrides). Teachers of the batch can read an answer's score history with each teacher's email and role, minus every entry made by a super admin; super admins read the full history, with their own entries marked; batch managers and students never can. An override stays in place through re-runs until a teacher or super admin clears it. An override can't be set on a student marked absent (409); unmark absent first.
+
+**Super admin actions are invisible to everyone else.** A super admin's action is applied exactly like anyone's, and is still written to the audit log, but only super admins can read that trace. The API removes it before the response leaves the server (the web app also does not render it): for teachers, batch managers and students, no response contains a super admin's email, role or the word "admin" as an actor. Concretely: a super admin's override gives the displayed score with no override marker, no "Score adjusted" label, no entry in the history and no "Adjusted" flag on the results board; an appeal a super admin closes or re-runs shows its new status and note but no handler; exams and publishing by a super admin carry no `createdBy`/`publishedBy` in other roles' responses; and a student CSV row naming a super admin's email is refused with the same wording as any non-student account. Legacy records with no stored role (overrides and audit entries made before teachers could override) are treated as super admin actions. Super admins see everything, and their own entries are marked "Super admin action" in the history.
 
 **Super admin audit.** The API wrapper that every route goes through writes an audit entry for each request a super admin makes with POST, PUT, PATCH or DELETE, and for their reads of `GET /exams/{id}/results` and `GET /answers/...`: actor, method, path, target ids, time and outcome (success, denied, rejected or error). Request bodies are never stored. If an entry cannot be written, the request still completes and the entry is logged as an error.
 

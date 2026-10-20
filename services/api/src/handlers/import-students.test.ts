@@ -452,11 +452,26 @@ describe('POST /batches/{batchId}/students/import: super admins are never studen
         line: 2,
         email: 'founder@college.edu',
         rollNo: 'R9',
-        reason: 'founder@college.edu is a super admin account, not a student',
+        reason: 'founder@college.edu is not a student account',
       },
     ]);
+    expect(JSON.stringify(body)).not.toMatch(/super admin|SUPER_ADMIN/i);
     expect(db.users.get('founder@college.edu')).toMatchObject({ role: 'SUPER_ADMIN' });
     expect(db.users.get('founder@college.edu')).not.toHaveProperty('rollNo');
+  });
+
+  it('tells a super admin uploading the file what the account is', async () => {
+    db.addUser(userOf('SUPER_ADMIN', { email: 'founder@college.edu', name: 'Founder' }));
+
+    const { body } = await call(
+      'super-admin@college.edu',
+      'A',
+      `${HEADER}\nFounder,founder@college.edu,R9,A`,
+    );
+
+    expect(body.rejected[0].reason).toBe(
+      'founder@college.edu is a super admin account, not a student',
+    );
   });
 
   it('cannot be bypassed by a super admin uploading the file', async () => {

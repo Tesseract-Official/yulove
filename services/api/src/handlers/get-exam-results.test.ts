@@ -89,13 +89,35 @@ describe('GET /exams/{id}/results', () => {
   it('shows an override instead of the formula score, and a missed complexity as 0', async () => {
     db.put(
       'Answers',
-      answerItem('s1@college.edu', 1, { override: { score: 9, reason: 'r', by: 'a', at: 't' } }),
+      answerItem('s1@college.edu', 1, {
+        override: { score: 9, reason: 'r', by: 'a', byRole: 'TEACHER', at: 't' },
+      }),
     );
     db.put('Answers', answerItem('s2@college.edu', 1, { testsPassed: 10, meetsComplexity: false }));
 
     const { students } = (await call(TEACHER_A)).body;
     expect(students[0].questions[0]).toMatchObject({ score: 9, overridden: true });
     expect(students[1].questions[0]).toMatchObject({ score: 0, overridden: false });
+  });
+
+  it('counts a super admin’s override in the score but does not mark it for a teacher', async () => {
+    db.put(
+      'Answers',
+      answerItem('s1@college.edu', 1, {
+        override: {
+          score: 9,
+          reason: 'r',
+          by: 'founder@gmail.com',
+          byRole: 'SUPER_ADMIN',
+          at: 't',
+        },
+      }),
+    );
+    const teacher = (await call(TEACHER_A)).body.students[0];
+    expect(teacher.questions[0]).toMatchObject({ score: 9, overridden: false });
+    expect(JSON.stringify(teacher)).not.toContain('founder');
+    const admin = (await call('super-admin@college.edu')).body.students[0];
+    expect(admin.questions[0]).toMatchObject({ score: 9, overridden: true });
   });
 
   it('marks questions with no answer yet', async () => {

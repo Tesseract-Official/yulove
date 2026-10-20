@@ -297,6 +297,7 @@ export function studentQuestion(extra: Partial<StudentQuestionView> = {}): Stude
     failedSmallTests: [],
     failedLargeTests: [],
     adjusted: false,
+    hasPhoto: false,
     canAppeal: true,
     ...extra,
   };

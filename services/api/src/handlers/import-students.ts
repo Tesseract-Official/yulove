@@ -183,6 +183,10 @@ async function plan(row: Candidate, ctx: AuthContext): Promise<Planned | string>
   if (!account) return { kind: 'create', row };
 
   if (account.role !== 'STUDENT') {
+    // Only a super admin is told that an email belongs to a super admin.
+    if (account.role === 'SUPER_ADMIN' && ctx.user.role !== 'SUPER_ADMIN') {
+      return `${row.emailKey} is not a student account`;
+    }
     return `${row.emailKey} is a ${account.role.toLowerCase().replace('_', ' ')} account, not a student`;
   }
   if (account.batchId && !ctx.canAccessBatch(account.batchId)) {

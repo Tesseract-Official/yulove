@@ -1283,3 +1283,83 @@ textarea {
   border-radius: 50%;
   background: #fff;
 }
+
+/* The student's own graded photo: a thumbnail that opens a full-screen viewer. */
+.my-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.my-photo-button {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #111;
+  cursor: zoom-in;
+  overflow: hidden;
+  min-height: var(--tap);
+}
+
+.my-photo-button img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+
+.photo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.92);
+}
+
+.photo-overlay-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+}
+
+.photo-overlay-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* The viewer handles pinch and drag itself, so the browser must not scroll or zoom the page. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.photo-overlay-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: transform;
+  -webkit-user-drag: none;
+}
+
+.appeal-reasons {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.appeal-reasons label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--tap);
+}

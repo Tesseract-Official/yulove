@@ -124,10 +124,9 @@ describe('who sees the score tools', () => {
     expect(api.callsTo(OVERRIDE_ROUTE)[0]?.body).toEqual({ score: 8, reason: 'Rechecked' });
   });
 
-  it('shows an existing override to everyone who looks at the answer, naming who made it by role', async () => {
-    open('BATCH_MANAGER', {
+  it('shows a super admin their own override, marked as hidden from everyone else', async () => {
+    open('SUPER_ADMIN', {
       'GET /answers/:examId/:studentEmail/:q': answerDetail({
-        canOverride: false,
         score: 9,
         override: {
           score: 9,
@@ -139,8 +138,43 @@ describe('who sees the score tools', () => {
       }),
     });
 
-    expect(await screen.findByText(/Score adjusted by admin to 9/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Super admin override \(hidden from teachers/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Rechecked by hand/)).toBeInTheDocument();
+  });
+
+  it('shows a batch manager only the score when a super admin changed it: the API sends no override', async () => {
+    open('BATCH_MANAGER', {
+      'GET /answers/:examId/:studentEmail/:q': answerDetail({
+        canOverride: false,
+        score: 9,
+      }),
+    });
+
+    expect(await screen.findByText('9 / 10 marks')).toBeInTheDocument();
+    expect(screen.queryByText(/adjusted|override/i)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/admin/i);
+  });
+
+  it('shows a batch manager a teacher’s override, naming the teacher', async () => {
+    open('BATCH_MANAGER', {
+      'GET /answers/:examId/:studentEmail/:q': answerDetail({
+        canOverride: false,
+        score: 9,
+        override: {
+          score: 9,
+          reason: 'Checked the paper',
+          by: 'tina@college.edu',
+          byRole: 'TEACHER',
+          at: '2026-10-26T09:00:00.000Z',
+        },
+      }),
+    });
+
+    expect(
+      await screen.findByText(/Score adjusted by teacher to 9 \(by tina@college.edu/),
+    ).toBeInTheDocument();
   });
 
   it('says "adjusted by teacher" for a teacher’s override', async () => {
@@ -164,6 +198,62 @@ describe('who sees the score tools', () => {
 });
 
 describe('the score history', () => {
+  const teacherOnly = {
+    examId: EXAM_ID,
+    studentEmail: 's1@college.edu',
+    questionNumber: 1,
+    entries: [
+      auditEntry({
+        actor: 'tina@college.edu',
+        actorRole: 'TEACHER',
+        timestamp: '2026-10-26T09:00:00.000Z',
+        reason: 'First',
+      }),
+    ],
+  };
+
+  it('shows a teacher the teachers’ changes only, with nothing marked as a super admin’s', async () => {
+    open('TEACHER', { 'GET /answers/:examId/:studentEmail/:q/audit': teacherOnly });
+    await userEvent.click(await screen.findByRole('button', { name: 'Audit history' }));
+
+    const list = await screen.findByRole('list', { name: 'Audit history' });
+    expect(within(list).getByText(/By tina@college.edu \(Teacher\)/)).toBeInTheDocument();
+    expect(within(list).queryByText(/Super admin/i)).not.toBeInTheDocument();
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('says there are no changes when the API sends none (every change was a super admin’s)', async () => {
+    open('TEACHER');
+    await userEvent.click(await screen.findByRole('button', { name: 'Audit history' }));
+    expect(await screen.findByText('No changes have been made to this score.')).toBeInTheDocument();
+  });
+
+  it('marks the super admin’s own changes clearly in their view', async () => {
+    open('SUPER_ADMIN', {
+      'GET /answers/:examId/:studentEmail/:q/audit': {
+        ...teacherOnly,
+        entries: [
+          auditEntry({
+            actor: 'admin@college.edu',
+            actorRole: 'SUPER_ADMIN',
+            timestamp: '2026-10-27T09:00:00.000Z',
+            reason: 'Second',
+          }),
+          ...teacherOnly.entries,
+        ],
+      },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Audit history' }));
+
+    const items = within(await screen.findByRole('list', { name: 'Audit history' })).getAllByRole(
+      'listitem',
+    );
+    expect(within(items[0] as HTMLElement).getByText(/Super admin action/)).toBeInTheDocument();
+    expect(
+      within(items[1] as HTMLElement).queryByText(/Super admin action/),
+    ).not.toBeInTheDocument();
+  });
+
   it.each(['SUPER_ADMIN', 'TEACHER'] as const)(
     'shows each change with the email and role of who made it, for a %s',
     async (role) => {

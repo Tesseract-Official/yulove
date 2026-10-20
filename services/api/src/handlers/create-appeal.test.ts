@@ -18,6 +18,7 @@ const S1 = 's1@college.edu';
 const body = (extra: Record<string, unknown> = {}) => ({
   examId: EXAM_ID,
   questionNumber: 1,
+  reason: 'WRONG_MARKS',
   message: 'I think my answer was marked wrong',
   ...extra,
 });
@@ -46,6 +47,7 @@ describe('POST /appeals', () => {
       examId: EXAM_ID,
       studentEmail: S1,
       questionNumber: 1,
+      reason: 'WRONG_MARKS',
       message: 'I think my answer was marked wrong',
       status: 'OPEN',
     });
@@ -54,6 +56,16 @@ describe('POST /appeals', () => {
     expect(appeals()).toHaveLength(1);
     expect(answer()?.openAppealId).toBe(out.appeal.appealId);
   });
+
+  it.each(['PHOTO_UNCLEAR', 'CODE_READ_WRONG', 'WRONG_MARKS', 'OTHER'])(
+    'stores the reason %s with the appeal',
+    async (reason) => {
+      const { status, body: out } = await call(S1, body({ reason }));
+      expect(status).toBe(201);
+      expect(out.appeal.reason).toBe(reason);
+      expect(appeals()[0]).toMatchObject({ reason });
+    },
+  );
 
   it('can appeal a question that could not be graded', async () => {
     expect((await call(S1, body({ questionNumber: 2 }))).status).toBe(201);
@@ -139,6 +151,16 @@ describe('POST /appeals', () => {
   });
 
   describe('is refused', () => {
+    it('without a reason, or with one that is not a choice, and writes nothing', async () => {
+      const withoutReason: Record<string, unknown> = body();
+      delete withoutReason['reason'];
+      expect((await call(S1, withoutReason)).status).toBe(422);
+      expect((await call(S1, body({ reason: '' }))).status).toBe(422);
+      expect((await call(S1, body({ reason: 'BECAUSE' }))).status).toBe(422);
+      expect(appeals()).toHaveLength(0);
+      expect(answer()?.openAppealId).toBeUndefined();
+    });
+
     it('without a message, or with a blank one', async () => {
       expect((await call(S1, body({ message: '' }))).status).toBe(422);
       expect((await call(S1, body({ message: '   ' }))).status).toBe(422);

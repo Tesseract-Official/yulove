@@ -80,13 +80,35 @@ describe('GET /exams/{id}/answers', () => {
     expect(body.counts).toMatchObject({ GRADED: 1, FAILED_TO_GRADE: 1, RUNNING: 1, QUEUED: 1 });
   });
 
-  it('marks an override on a question', async () => {
+  it('marks a teacher’s override on a question', async () => {
     db.put(
       'Answers',
-      answerItem('s1@college.edu', 1, { override: { score: 9, reason: 'r', by: 'a', at: 't' } }),
+      answerItem('s1@college.edu', 1, {
+        override: { score: 9, reason: 'r', by: 'a', byRole: 'TEACHER', at: 't' },
+      }),
     );
     const { body } = await call(MANAGER);
     expect(body.students[0].questions[0]).toMatchObject({ score: 9, overridden: true });
+  });
+
+  it('counts a super admin’s override in the score but does not mark it for a batch manager', async () => {
+    db.put(
+      'Answers',
+      answerItem('s1@college.edu', 1, {
+        override: {
+          score: 9,
+          reason: 'r',
+          by: 'founder@gmail.com',
+          byRole: 'SUPER_ADMIN',
+          at: 't',
+        },
+      }),
+    );
+    const { body } = await call(MANAGER);
+    expect(body.students[0].questions[0]).toMatchObject({ score: 9, overridden: false });
+    expect(JSON.stringify(body)).not.toContain('founder');
+    const seenBySuperAdmin = (await call('super-admin@college.edu')).body;
+    expect(seenBySuperAdmin.students[0].questions[0]).toMatchObject({ score: 9, overridden: true });
   });
 
   it('shows an absent student as absent with every score 0', async () => {

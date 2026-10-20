@@ -1,4 +1,5 @@
-import type { Verdict } from './enums.js';
+import type { AppealReason, Verdict } from './enums.js';
+import { isTeacherOverride } from './visibility.js';
 import { TEST_COUNTS } from './questions.js';
 import { computeQuestionScore } from './scoring.js';
 import type { AnswerItem, AppealItem } from './types.js';
@@ -7,11 +8,15 @@ import { VERDICT_TEXT_LIMIT } from './verdicts.js';
 /**
  * What a student may see about one question, and nothing more. This is the only place that
  * decides it: no transcription, code, fixes, failure reasons, override details, image, or test
- * data beyond the failed small tests and the verdict of each failed large test.
+ * data beyond the failed small tests and the verdict of each failed large test. The photo is not
+ * here either: the page fetches its own photo through a route that checks ownership, and `hasPhoto`
+ * only says whether there is one.
  */
 export interface StudentAppealView {
   appealId: string;
   status: AppealItem['status'];
+  /** Absent on appeals made before reasons existed. */
+  reason?: AppealReason;
   message: string;
   /** The reviewer's note, once there is one. */
   note?: string;
@@ -48,10 +53,12 @@ export interface StudentQuestionView {
   testsTotal?: number;
   failedSmallTests: FailedSmallTest[];
   failedLargeTests: FailedLargeTest[];
-  /** A teacher or a super admin set the score by hand. */
+  /** A teacher set the score by hand. A super admin's override is not shown to students. */
   adjusted: boolean;
   /** Who: shown as a word only, never a name or email. */
-  adjustedBy?: 'teacher' | 'admin';
+  adjustedBy?: 'teacher';
+  /** The student has a graded photo of this answer to look at. */
+  hasPhoto: boolean;
   appeal?: StudentAppealView;
   /** Whether the student may raise an appeal on this question now. */
   canAppeal: boolean;
@@ -59,7 +66,6 @@ export interface StudentQuestionView {
 
 export const MESSAGES = {
   absent: 'Absent',
-  adjusted: 'Score adjusted by admin',
   adjustedByTeacher: 'Score adjusted by teacher',
   notGraded: 'Could not be graded — raise an appeal',
   inProgress: 'Still being graded',
@@ -84,6 +90,7 @@ export function appealView(appeal: AppealItem): StudentAppealView {
   return {
     appealId: appeal.appealId,
     status: appeal.status,
+    ...(appeal.reason ? { reason: appeal.reason } : {}),
     message: appeal.message,
     ...(appeal.note ? { note: appeal.note } : {}),
     createdAt: appeal.createdAt,
@@ -115,6 +122,7 @@ export function studentQuestionView(input: {
     failedSmallTests: [],
     failedLargeTests: [],
     adjusted: false,
+    hasPhoto: false,
     canAppeal: false,
   };
   if (appeal) view.appeal = appealView(appeal);
@@ -123,12 +131,13 @@ export function studentQuestionView(input: {
   if (!answer) return { ...view, status: 'NOT_SUBMITTED', messages: [MESSAGES.notSubmitted] };
 
   const noOpenAppeal = appeal?.status !== 'OPEN';
-  if (answer.override) {
-    // Overrides made before teachers could have no role: those were all made by an admin.
-    const byTeacher = answer.override.byRole === 'TEACHER';
+  view.hasPhoto = answer.imageKey !== undefined;
+  // A super admin's override (or one from before teachers could override) is applied to the score
+  // but never shown: the student just sees the score.
+  if (isTeacherOverride(answer.override)) {
     view.adjusted = true;
-    view.adjustedBy = byTeacher ? 'teacher' : 'admin';
-    view.messages.push(byTeacher ? MESSAGES.adjustedByTeacher : MESSAGES.adjusted);
+    view.adjustedBy = 'teacher';
+    view.messages.push(MESSAGES.adjustedByTeacher);
   }
 
   if (answer.status === 'FAILED_TO_GRADE') {

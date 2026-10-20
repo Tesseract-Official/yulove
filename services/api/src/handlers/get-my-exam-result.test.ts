@@ -135,7 +135,7 @@ describe('GET /me/exams/{id}', () => {
     }
   });
 
-  it('says "Score adjusted by admin" and shows the override as the score, without the reason', async () => {
+  it('shows a super admin’s override as the score only: no label, no trace', async () => {
     db.put(
       'Answers',
       answerItem(S1, 1, {
@@ -150,10 +150,10 @@ describe('GET /me/exams/{id}', () => {
     );
     const { body } = await call(S1);
 
-    expect(body.questions[0]).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'admin' });
-    expect(body.questions[0].messages).toContain('Score adjusted by admin');
+    expect(body.questions[0]).toMatchObject({ score: 9, adjusted: false });
+    expect(body.questions[0].messages).toEqual([]);
     expect(body.totalScore).toBe(9);
-    expect(JSON.stringify(body)).not.toMatch(/PRIVATE REASON|admin@x.com|SUPER_ADMIN/);
+    expect(JSON.stringify(body)).not.toMatch(/PRIVATE REASON|admin|SUPER_ADMIN/i);
   });
 
   it('says "Score adjusted by teacher" for a teacher’s override, never their email, role or reason', async () => {
@@ -173,17 +173,17 @@ describe('GET /me/exams/{id}', () => {
 
     expect(body.questions[0]).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'teacher' });
     expect(body.questions[0].messages).toContain('Score adjusted by teacher');
-    expect(body.questions[0].messages).not.toContain('Score adjusted by admin');
     expect(JSON.stringify(body)).not.toMatch(/PRIVATE REASON|teacher@college.edu|TEACHER|"by"/);
   });
 
-  it('reads an override from before roles were recorded as an admin’s', async () => {
+  it('reads an override from before roles were recorded as a super admin’s: no label', async () => {
     db.put(
       'Answers',
       answerItem(S1, 1, { override: { score: 9, reason: 'r', by: 'old@x.com', at: 't' } }),
     );
     const { body } = await call(S1);
-    expect(body.questions[0].messages).toContain('Score adjusted by admin');
+    expect(body.questions[0]).toMatchObject({ score: 9, adjusted: false });
+    expect(body.questions[0].messages).toEqual([]);
   });
 
   it("shows the appeal status and the reviewer's note, not who handled it", async () => {
@@ -254,6 +254,13 @@ describe('GET /me/exams/{id}', () => {
       'NOT_SUBMITTED',
     ]);
     expect((await call(S1)).body.questions[0].status).toBe('IN_PROGRESS');
+  });
+
+  it('says which questions have a photo to look at, without saying where it is', async () => {
+    const { body } = await call(S1);
+    expect(body.questions.map((q: { hasPhoto: boolean }) => q.hasPhoto)).toEqual(
+      body.questions.map((_q: unknown, i: number) => i < 2),
+    );
   });
 
   describe('what a student must never get', () => {

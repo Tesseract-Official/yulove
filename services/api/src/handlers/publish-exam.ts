@@ -6,7 +6,13 @@ import {
   publishBody,
   type PublishResponse,
 } from '@yulove/shared';
-import { examStudentsDb, examsDb, requireUser, totalFor } from '@yulove/shared/server';
+import {
+  examStudentsDb,
+  examsDb,
+  makeActorResolver,
+  requireUser,
+  totalFor,
+} from '@yulove/shared/server';
 import { IN_PROGRESS, loadExamStudents } from '../lib/board.js';
 import { loadExamInBatch } from '../lib/exams.js';
 import { apiHandler, pathParam, type ApiEvent, type ApiResult } from '../lib/http.js';
@@ -23,11 +29,13 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const body = event.body ? parseBody(publishBody, event) : {};
 
   if (exam.status === 'PUBLISHED') {
+    // A super admin may have published it; the batch manager is not told.
+    const publishedBy = await makeActorResolver(ctx.user.role).visible(exam.publishedBy);
     const already: PublishResponse = {
       examId: exam.examId,
       status: 'PUBLISHED',
       alreadyPublished: true,
-      publishedBy: exam.publishedBy,
+      publishedBy,
       publishedAt: exam.publishedAt,
     };
     return { status: 200, body: already };

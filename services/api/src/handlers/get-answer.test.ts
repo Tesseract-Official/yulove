@@ -99,15 +99,48 @@ describe('GET /answers/{examId}/{studentEmail}/{q}', () => {
     expect(url.searchParams.get('response-content-type')).toBe('image/jpeg');
   });
 
-  it('shows the override and the displayed score', async () => {
+  it('shows a teacher’s override, and the displayed score, to the batch manager and teachers', async () => {
     db.put(
       'Answers',
-      answerItem(EMAIL, 1, { override: { score: 9, reason: 'Misread', by: 'a@x.com', at: 't' } }),
+      answerItem(EMAIL, 1, {
+        override: { score: 9, reason: 'Misread', by: TEACHER_A, byRole: 'TEACHER', at: 't' },
+      }),
     );
-    const { body } = await call(MANAGER);
-    expect(body.score).toBe(9);
-    expect(body.override).toMatchObject({ score: 9, reason: 'Misread' });
+    for (const who of [MANAGER, TEACHER_A, TEACHER_C, 'super-admin@college.edu']) {
+      const { body } = await call(who);
+      expect(body.score, who).toBe(9);
+      expect(body.override, who).toMatchObject({ score: 9, reason: 'Misread', by: TEACHER_A });
+    }
   });
+
+  it.each([
+    ['with the role recorded', { byRole: 'SUPER_ADMIN' as const }],
+    ['from before roles were recorded', {}],
+  ])(
+    'applies a super admin’s override (%s) but shows it only to super admins',
+    async (_name, role) => {
+      db.put(
+        'Answers',
+        answerItem(EMAIL, 1, {
+          override: {
+            score: 9,
+            reason: 'Founder reason',
+            by: 'founder@gmail.com',
+            at: 't',
+            ...role,
+          },
+        }),
+      );
+      for (const who of [MANAGER, TEACHER_A, TEACHER_C]) {
+        const { body } = await call(who);
+        expect(body.score, who).toBe(9);
+        expect(body.override, who).toBeUndefined();
+        expect(JSON.stringify(body), who).not.toMatch(/founder|Founder|SUPER_ADMIN/);
+      }
+      const { body } = await call('super-admin@college.edu');
+      expect(body.override).toMatchObject({ score: 9, by: 'founder@gmail.com' });
+    },
+  );
 
   it.each([
     ['the teacher who made the exam', TEACHER_A, true],

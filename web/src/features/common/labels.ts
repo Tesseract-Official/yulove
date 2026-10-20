@@ -1,4 +1,5 @@
 import type {
+  AppealReason,
   AppealStatus,
   CellStatus,
   CompareMode,
@@ -126,6 +127,17 @@ export const APPEAL_STATUS_TONE: Record<AppealStatus, Tone> = {
   RERUN: 'progress',
   CLOSED: 'neutral',
 };
+
+/** Why a student appeals, as the form and the reviewer's page word it. */
+export const APPEAL_REASON_TEXT: Record<AppealReason, string> = {
+  PHOTO_UNCLEAR: 'Photo is unclear or cut off',
+  CODE_READ_WRONG: 'My code was read wrong',
+  WRONG_MARKS: 'Wrong marks for a correct answer',
+  OTHER: 'Other',
+};
+
+/** What a reviewer is told when the student says the photo is the problem. */
+export const PHOTO_UNCLEAR_NOTE = 'Ask the batch manager to upload a better photo, then re-grade.';
 
 /** An appeal, as the student who sent it sees it. */
 export const STUDENT_APPEAL_TEXT: Record<AppealStatus, string> = {

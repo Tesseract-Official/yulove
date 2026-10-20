@@ -23,6 +23,7 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",
     "@types/pdfkit": "^0.17.6",
+    "@yulove/infra": "workspace:^",
     "aws-sdk-client-mock": "^4.1.0",
     "pdfjs-dist": "^6.4.299"
   }

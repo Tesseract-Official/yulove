@@ -1,12 +1,13 @@
 import { mapLimit, ValidationError, type ExamItem, type ExamListResponse } from '@yulove/shared';
-import { examsDb, requireUser } from '@yulove/shared/server';
+import { examsDb, makeActorResolver, requireUser } from '@yulove/shared/server';
 import { apiHandler, queryParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /**
  * GET /exams?batchId= (teacher, batch manager): the exams of one batch the caller is assigned to.
  * Without `batchId` it lists the exams of every batch the caller is assigned to; a super admin
  * gets every exam. Any teacher or batch manager of a batch sees its exams, not only the teacher who
- * created one (the same rule as the status board).
+ * created one (the same rule as the status board). `createdBy` is left out when a super admin made
+ * the exam and the caller is not one.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER', 'BATCH_MANAGER']);
@@ -26,6 +27,12 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     exams = perBatch.flat();
   }
 
+  const actors = makeActorResolver(ctx.user.role);
+  const creators = new Map<string, string | undefined>();
+  for (const email of new Set(exams.map((e) => e.createdBy))) {
+    creators.set(email, await actors.visible(email));
+  }
+
   const body: ExamListResponse = {
     exams: exams
       .map((exam) => ({
@@ -35,7 +42,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
         date: exam.date,
         status: exam.status,
         questionCount: exam.questions.length,
-        createdBy: exam.createdBy,
+        ...(creators.get(exam.createdBy) ? { createdBy: exam.createdBy } : {}),
       }))
       .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title)),
   };

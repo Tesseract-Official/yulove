@@ -18,3 +18,4 @@ export * from './student-view.js';
 export * from './tables.js';
 export * from './types.js';
 export * from './verdicts.js';
+export * from './visibility.js';

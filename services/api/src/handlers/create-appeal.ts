@@ -13,8 +13,8 @@ import { loadPublishedExam } from '../lib/student.js';
 import { apiHandler, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /**
- * POST /appeals (student): appeal one question of their own, on an exam that is published. One
- * open appeal per question at a time.
+ * POST /appeals (student): appeal one question of their own, on an exam that is published, with a
+ * required reason and a message. One open appeal per question at a time.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['STUDENT']);
@@ -48,6 +48,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     examId: exam.examId,
     studentEmail: student,
     questionNumber: body.questionNumber,
+    reason: body.reason,
     message: body.message,
     status: 'OPEN',
     createdAt: new Date().toISOString(),

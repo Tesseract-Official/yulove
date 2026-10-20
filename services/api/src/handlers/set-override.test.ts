@@ -430,12 +430,31 @@ describe('GET /answers/{examId}/{studentEmail}/{q}/audit', () => {
   it.each([
     ['the teacher who made the exam', TEACHER_A],
     ['another teacher of the batch', TEACHER_C],
-    ['a super admin', ADMIN],
-  ])('is shown to %s, with the email and role of each person', async (_who, email) => {
+  ])(
+    'is shown to %s with every teacher’s entry and none of a super admin’s',
+    async (_who, email) => {
+      await call(TEACHER_A, { score: 8, reason: 'By the teacher' });
+      await call(ADMIN, { score: 6, reason: 'By a founder' });
+      await call(TEACHER_C, { score: 7, reason: 'By another teacher' });
+
+      const { status, body } = await history(email);
+
+      expect(status).toBe(200);
+      expect(
+        body.entries.map((e: { actor: string; actorRole: string }) => [e.actor, e.actorRole]),
+      ).toEqual([
+        [TEACHER_C, 'TEACHER'],
+        [TEACHER_A, 'TEACHER'],
+      ]);
+      expect(JSON.stringify(body)).not.toMatch(/founder|super-admin|SUPER_ADMIN|By a founder/i);
+    },
+  );
+
+  it('is shown to a super admin in full, with the email and role of each person', async () => {
     await call(TEACHER_A, { score: 8, reason: 'By the teacher' });
     await call(ADMIN, { score: 6, reason: 'By a founder' });
 
-    const { status, body } = await history(email);
+    const { status, body } = await history(ADMIN);
 
     expect(status).toBe(200);
     expect(
@@ -444,6 +463,20 @@ describe('GET /answers/{examId}/{studentEmail}/{q}/audit', () => {
       [ADMIN, 'SUPER_ADMIN'],
       [TEACHER_A, 'TEACHER'],
     ]);
+  });
+
+  it('leaves out entries written before roles were recorded, for teachers only', async () => {
+    db.put('AuditLog', {
+      entityKey: `answer#${EXAM_ID}#${S1}#1`,
+      timestamp: '2026-10-01T00:00:00.000Z',
+      actor: 'old-founder@gmail.com',
+      action: 'OVERRIDE_SCORE',
+      before: { override: null, displayedScore: 3 },
+      after: { override: 9, displayedScore: 9 },
+      reason: 'Old reason',
+    });
+    expect((await history(TEACHER_A)).body.entries).toEqual([]);
+    expect((await history(ADMIN)).body.entries).toHaveLength(1);
   });
 
   it.each([

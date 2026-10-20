@@ -19,6 +19,8 @@ export const keys = {
     ['audit', examId, email, question] as const,
   myExams: ['my-exams'] as const,
   myExam: (examId: string) => ['my-exam', examId] as const,
+  myPhoto: (examId: string, questionNumber: number) =>
+    ['my-photo', examId, questionNumber] as const,
   answer: (examId: string, email: string, question: number) =>
     ['answer', examId, email, question] as const,
 };

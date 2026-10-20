@@ -7,6 +7,7 @@ import {
   type AnswerDetailResponse,
   normaliseEmail,
   NotFoundError,
+  overrideVisibleTo,
   ValidationError,
 } from '@yulove/shared';
 import { answersDb, examStudentsDb, requireUser } from '@yulove/shared/server';
@@ -78,7 +79,8 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
     testsTotal: answer.testsTotal,
     verdicts: answer.verdicts ?? [],
     score: computeQuestionScore(ref.marks, answer, absent),
-    override: answer.override,
+    // A super admin's override is applied to the score but is not shown to anyone else.
+    override: overrideVisibleTo(ctx.user.role, answer.override),
     // Also decides whether the web shows the score history (same rule as the history route).
     canOverride: mayReviewExam(ctx, exam),
   };

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MyExamResultResponse } from '@yulove/shared';
@@ -255,23 +255,18 @@ describe('one exam', () => {
     expect(screen.queryByRole('button', { name: 'Raise an appeal' })).not.toBeInTheDocument();
   });
 
-  it('says when the score was adjusted by an admin, without showing anything else about it', async () => {
+  it('shows only the score when a super admin changed it: no label, no mention of an admin', async () => {
+    // The API sends no marker for a super admin's override; the page must not invent one.
     open(`/student/exams/${EXAM_ID}`, {
-      'GET /me/exams/:id': exam([
-        studentQuestion({
-          score: 9,
-          adjusted: true,
-          adjustedBy: 'admin',
-          messages: ['Score adjusted by admin'],
-        }),
-      ]),
+      'GET /me/exams/:id': exam([studentQuestion({ score: 9 })]),
     });
 
-    expect(await screen.findByText('Score adjusted by admin')).toBeInTheDocument();
-    expect(screen.getByText('9 / 10')).toBeInTheDocument();
+    expect(await screen.findByText('9 / 10')).toBeInTheDocument();
+    expect(screen.queryByText(/adjusted/i)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/admin/i);
   });
 
-  it('says when a teacher adjusted the score, as an information line like the admin one', async () => {
+  it('says when a teacher adjusted the score, as an information line', async () => {
     open(`/student/exams/${EXAM_ID}`, {
       'GET /me/exams/:id': exam([
         studentQuestion({
@@ -285,7 +280,7 @@ describe('one exam', () => {
 
     const line = await screen.findByText('Score adjusted by teacher');
     expect(line).toHaveClass('notice-info');
-    expect(screen.queryByText('Score adjusted by admin')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/admin/i);
   });
 
   it('explains when the exam cannot be found', async () => {
@@ -358,6 +353,47 @@ describe('appeals', () => {
     expect(screen.getByRole('button', { name: 'Raise an appeal' })).toBeInTheDocument();
   });
 
+  it('offer the four reasons, none chosen, and will not send without one', async () => {
+    const api = open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([studentQuestion()]),
+    });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Raise an appeal' }));
+    const reasons = screen.getAllByRole('radio').map((r) => r.closest('label')?.textContent);
+    expect(reasons).toEqual([
+      'Photo is unclear or cut off',
+      'My code was read wrong',
+      'Wrong marks for a correct answer',
+      'Other',
+    ]);
+    for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked();
+
+    await userEvent.type(screen.getByLabelText(/Tell the reviewer/), 'Please look again.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send appeal' }));
+
+    expect(await screen.findByText('Choose what went wrong first.')).toBeInTheDocument();
+    expect(api.callsTo('POST /appeals')).toHaveLength(0);
+  });
+
+  it('show the reason the student gave', async () => {
+    open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([
+        studentQuestion({
+          canAppeal: false,
+          appeal: {
+            appealId: 'ap1',
+            status: 'OPEN',
+            reason: 'PHOTO_UNCLEAR',
+            message: 'The corner is cut off.',
+            createdAt: '2026-10-25T10:00:00.000Z',
+          },
+        }),
+      ]),
+    });
+
+    expect(await screen.findByText('Photo is unclear or cut off')).toBeInTheDocument();
+  });
+
   it('use a form with a message limit of 1,000 characters and a counter', async () => {
     open(`/student/exams/${EXAM_ID}`, { 'GET /me/exams/:id': myExam([studentQuestion()]) });
 
@@ -382,6 +418,7 @@ describe('appeals', () => {
     });
 
     await userEvent.click(await screen.findByRole('button', { name: 'Raise an appeal' }));
+    await userEvent.click(screen.getByLabelText('Other'));
     await userEvent.type(screen.getByLabelText(/Tell the reviewer/), '   ');
     await userEvent.click(screen.getByRole('button', { name: 'Send appeal' }));
 
@@ -418,6 +455,7 @@ describe('appeals', () => {
     });
 
     await userEvent.click(await screen.findByRole('button', { name: 'Raise an appeal' }));
+    await userEvent.click(screen.getByLabelText('My code was read wrong'));
     await userEvent.type(screen.getByLabelText(/Tell the reviewer/), '  Please look again.  ');
     await userEvent.click(screen.getByRole('button', { name: 'Send appeal' }));
 
@@ -425,6 +463,7 @@ describe('appeals', () => {
     expect(api.callsTo('POST /appeals')[0]?.body).toEqual({
       examId: EXAM_ID,
       questionNumber: 1,
+      reason: 'CODE_READ_WRONG',
       message: 'Please look again.',
     });
     expect(screen.queryByRole('button', { name: 'Raise an appeal' })).not.toBeInTheDocument();
@@ -441,6 +480,7 @@ describe('appeals', () => {
     });
 
     await userEvent.click(await screen.findByRole('button', { name: 'Raise an appeal' }));
+    await userEvent.click(screen.getByLabelText('Other'));
     await userEvent.type(screen.getByLabelText(/Tell the reviewer/), 'Again');
     await userEvent.click(screen.getByRole('button', { name: 'Send appeal' }));
 
@@ -463,6 +503,74 @@ describe('appeals', () => {
   });
 });
 
+describe('the student’s own graded photo', () => {
+  const PHOTO =
+    'https://bucket.s3.ap-south-1.amazonaws.com/answers/exam-1/R1/q1.jpg?X-Amz-Expires=300';
+  const photoRoute = { url: PHOTO, expiresInSeconds: 300 };
+
+  it('is shown on each answered question, fetched from the student’s own photo route', async () => {
+    const api = open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([
+        studentQuestion({ hasPhoto: true }),
+        studentQuestion({ number: 2, marks: 5, hasPhoto: false, status: 'NOT_SUBMITTED' }),
+      ]),
+      'GET /me/exams/:id/questions/:q/photo': photoRoute,
+    });
+
+    const image = await within(
+      await screen.findByRole('heading', { name: 'Question 1' }).then(() => card(1)),
+    ).findByRole('img', { name: 'Your photo for question 1' });
+    expect(image).toHaveAttribute('src', PHOTO);
+    expect(within(card(2)).queryByRole('img')).not.toBeInTheDocument();
+    expect(api.callsTo('GET /me/exams/:id/questions/:q/photo').map((c) => c.path)).toEqual([
+      `/me/exams/${EXAM_ID}/questions/1/photo`,
+    ]);
+  });
+
+  it('opens full screen when tapped, with zoom controls, and closes again', async () => {
+    open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([studentQuestion({ hasPhoto: true })]),
+      'GET /me/exams/:id/questions/:q/photo': photoRoute,
+    });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Your photo for question 1: open full screen' }),
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Your photo for question 1' });
+    expect(within(dialog).getByRole('img')).toHaveAttribute('src', PHOTO);
+    expect(within(dialog).getByText('100%')).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zoom in' }));
+    expect(within(dialog).getByText('150%')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zoom out' }));
+    expect(within(dialog).getByText('100%')).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('closes with Escape', async () => {
+    open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([studentQuestion({ hasPhoto: true })]),
+      'GET /me/exams/:id/questions/:q/photo': photoRoute,
+    });
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Your photo for question 1: open full screen' }),
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('says so, with a retry, when the photo cannot be loaded; the marks still show', async () => {
+    open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([studentQuestion({ hasPhoto: true })]),
+      'GET /me/exams/:id/questions/:q/photo': apiError(404, 'NOT_FOUND', 'no photo'),
+    });
+    expect(await screen.findByText(/Your photo could not be loaded/)).toBeInTheDocument();
+    expect(screen.getByText('7 / 10')).toBeInTheDocument();
+  });
+});
+
 describe('a student’s own data only', () => {
   it('only ever asks for the student’s own routes', async () => {
     const api = open(`/student/exams/${EXAM_ID}`, {
@@ -470,15 +578,66 @@ describe('a student’s own data only', () => {
       'POST /appeals': { appeal: {} },
     });
     await userEvent.click(await screen.findByRole('button', { name: 'Raise an appeal' }));
+    await userEvent.click(screen.getByLabelText('Wrong marks for a correct answer'));
     await userEvent.type(screen.getByLabelText(/Tell the reviewer/), 'Hello');
     await userEvent.click(screen.getByRole('button', { name: 'Send appeal' }));
     await waitFor(() => expect(api.callsTo('POST /appeals')).toHaveLength(1));
 
     const asked = api.calls.map((c) => `${c.method} ${c.path}`);
     for (const call of asked) {
-      expect(call).toMatch(/^(GET \/me(\/exams(\/[^/]+)?)?|POST \/appeals)$/);
+      expect(call).toMatch(
+        /^(GET \/me(\/exams(\/[^/]+(\/questions\/\d+\/photo)?)?)?|POST \/appeals)$/,
+      );
     }
     // Nothing in what was sent names another student or an email.
     expect(JSON.stringify(api.callsTo('POST /appeals')[0]?.body)).not.toContain('@');
+  });
+});
+
+describe('pinching the full-screen photo', () => {
+  const PHOTO = 'https://bucket.s3.ap-south-1.amazonaws.com/answers/exam-1/R1/q1.jpg';
+
+  it('zooms with two fingers moving apart, drags when zoomed and double-taps back to fit', async () => {
+    open(`/student/exams/${EXAM_ID}`, {
+      'GET /me/exams/:id': myExam([studentQuestion({ hasPhoto: true })]),
+      'GET /me/exams/:id/questions/:q/photo': { url: PHOTO, expiresInSeconds: 300 },
+    });
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Your photo for question 1: open full screen' }),
+    );
+    const frame = screen.getByTestId('photo-frame');
+    frame.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 400, height: 600, right: 400, bottom: 600 }) as DOMRect;
+    const image = within(frame).getByRole('img');
+    const pointer = (type: string, id: number, x: number, y: number) =>
+      fireEvent(
+        frame,
+        Object.assign(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }), {
+          pointerId: id,
+        }),
+      );
+
+    // Two fingers 100 px apart, then 200 px apart: twice the zoom.
+    pointer('pointerdown', 1, 150, 300);
+    pointer('pointerdown', 2, 250, 300);
+    pointer('pointermove', 2, 350, 300);
+    expect(screen.getByText('200%')).toBeInTheDocument();
+    expect(image.style.transform).toContain('scale(2)');
+    pointer('pointerup', 2, 350, 300);
+    pointer('pointerup', 1, 150, 300);
+
+    // One finger drags the zoomed photo.
+    pointer('pointerdown', 3, 200, 300);
+    pointer('pointermove', 3, 230, 310);
+    expect(image.style.transform).toContain('scale(2)');
+    pointer('pointerup', 3, 230, 310);
+
+    // A double tap goes back to fit.
+    pointer('pointerdown', 4, 200, 300);
+    pointer('pointerup', 4, 200, 300);
+    pointer('pointerdown', 4, 200, 300);
+    pointer('pointerup', 4, 200, 300);
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(image.style.transform).toBe('translate(0px, 0px) scale(1)');
   });
 });

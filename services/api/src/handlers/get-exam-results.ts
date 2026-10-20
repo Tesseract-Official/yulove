@@ -14,7 +14,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const exam = await loadExamInBatch(ctx, pathParam(event, 'id'));
 
   const students: ResultStudentRow[] = (await loadExamStudents(exam)).map((s) => {
-    const row = studentRow(exam, s);
+    const row = studentRow(exam, s, ctx.user.role);
     return {
       ...row,
       questions: row.questions.map((q) => ({

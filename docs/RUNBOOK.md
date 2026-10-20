@@ -202,13 +202,15 @@ After publishing, a student opens **Your results**, picks the exam and sees for 
 - "Did not meet the required time complexity" (the question scored zero for being too slow in principle);
 - "Could not be graded — raise an appeal";
 - "Still being graded", "No answer was submitted", "Absent";
-- "Score adjusted by admin" (a founder set it by hand).
+- "Score adjusted by teacher" (a teacher set it by hand). When a founder changes a score the student sees only the new score and no label at all.
 
-Students never see the photo, the code that was read, or who handled their appeal.
+Under each answered question the student also sees **their own photo, exactly as it was sent for grading** (after cropping and turning), from the latest upload. Tapping it opens it full screen, where two fingers zoom and one finger drags (a laptop has **Zoom in** and **Zoom out** buttons). The photo is only shown after you publish, only to the student who wrote the answer, and the link behind it works for **5 minutes** and is made fresh each time: if a student leaves the page open for a long time it fetches a new link by itself, or they can press **Try again**. If you replace a photo (**Replace photo**), the student sees the new one once the answer is graded again. Note that a replaced photo is shown as soon as it is uploaded, a few seconds before **Replace and grade again** finishes.
 
-**An appeal** starts when a student presses **Raise an appeal** on one question and writes a short message (up to 1,000 characters). Only one appeal can be open per question.
+Students never see the code that was read, another student's photo, or who handled their appeal.
 
-**Teachers** handle appeals, under **Appeals** on the Teacher menu. Any teacher assigned to the batch can open its appeals (choose batch and exam; open ones come first), not only the teacher who made the exam; founders see every exam. A teacher of another batch, or one who has been taken off the batch, cannot open them, and batch managers cannot see appeals at all. Anyone following an old link to the appeals pages in the Batch manager menu is sent to the teacher page (founders) or told it is not allowed (batch managers). Opening one shows the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results. Then choose:
+**An appeal** starts when a student presses **Raise an appeal** on one question. They must choose a reason ("Photo is unclear or cut off", "My code was read wrong", "Wrong marks for a correct answer" or "Other") and write a short message (up to 1,000 characters). Only one appeal can be open per question. Appeals made before reasons existed show no reason.
+
+**Teachers** handle appeals, under **Appeals** on the Teacher menu. Any teacher assigned to the batch can open its appeals (choose batch and exam; open ones come first), not only the teacher who made the exam; founders see every exam. A teacher of another batch, or one who has been taken off the batch, cannot open them, and batch managers cannot see appeals at all. Anyone following an old link to the appeals pages in the Batch manager menu is sent to the teacher page (founders) or told it is not allowed (batch managers). Opening one shows, together on one page, the reason and message, the photo (with zoom), what Gemini read, the corrected code, the fixes and the test results, so you can decide without opening anything else. If the reason is "Photo is unclear or cut off" the page says: "Ask the batch manager to upload a better photo, then re-grade." Then choose:
 
 - **Re-grade as is**: grade the stored photo again.
 - **Upload a better photo and re-grade**: only founders can do this from the appeal, because only founders and batch managers can upload photos. A teacher who needs a better photo asks a batch manager to upload it from **Upload answers**, then presses **Refresh** here and either re-grades or closes the appeal.
@@ -224,11 +226,15 @@ Any **teacher of the exam's batch** can set a score by hand, and so can the **fo
 2. Press **Override score**, type the new score (between 0 and the question's marks) and a reason. The reason is required.
 3. To go back to the calculated score, open the same dialog and choose to remove the override (a reason is required for that too).
 
-An override stays through re-runs until a teacher or founder removes it, so grading the answer again changes the calculated score but not the one set by hand. It cannot be set for a student marked absent: take away "absent" first. Students then see "Score adjusted by teacher" or "Score adjusted by admin" (just those words, never who it was or why).
+An override stays through re-runs until a teacher or founder removes it, so grading the answer again changes the calculated score but not the one set by hand. It cannot be set for a student marked absent: take away "absent" first. Students then see "Score adjusted by teacher" if a teacher did it (just those words, never who it was or why), and nothing extra if a founder did.
 
-**Audit history** (a panel on the same answer page, for teachers of the batch and founders) lists every change to that score, newest first: who (email and whether they were a teacher or a founder), when, old and new score and the reason. Students never see it, and neither do batch managers.
+**Audit history** (a panel on the same answer page, for teachers of the batch and founders) lists every change to that score, newest first: who (email and whether they were a teacher), when, old and new score and the reason. Students never see it, and neither do batch managers. Teachers see only the changes made by teachers; changes made by a founder are not in what the server sends them. A founder sees all of them, and their own are marked **Super admin action: hidden from everyone else**.
 
-Separately, the system quietly records every request a founder makes that changes something, and every time a founder reads results or an answer: who, what, when and whether it worked (never the contents). Founders cannot switch this off.
+**Founders' actions are invisible to everyone else.** Whatever a founder does (an override, a re-grade or closing an appeal, making or publishing an exam, switching someone off) takes effect normally, but teachers, batch managers and students are never told who did it: no email, no role, no "admin" label. They see the result (the new score, the appeal's new status and note, the exam) and, where a name would normally appear (who handled an appeal, who made an exam), nothing. Only founders can read the trace.
+
+Separately, the system quietly records every request a founder makes that changes something, and every time a founder reads results or an answer: who, what, when and whether it worked (never the contents). Founders cannot switch this off, and nobody else can read it.
+
+**If the audit history shows "Could not load the history".** The history route reads the exam to check the caller may review it, so its Lambda needs read access to the `Exams` table. If that grant is missing in `infra/src/routes.ts` the Lambda fails with `Missing environment variable EXAMS_TABLE` (look for that text in the `get-answer-audit` log group). The entries themselves are safe: they are written by the override route and read by key, so nothing is lost while the history cannot be read. The test `services/api/src/route-permissions.test.ts` runs every handler with only its route's tables to catch this before a deploy.
 
 ## 9. Answers that could not be graded
 
@@ -371,7 +377,7 @@ Do this once, before the first real exam. It answers two questions: does Gemini 
 - [ ] Students write the exam on paper in class. Collect **30 to 50 real sheets**, covering all four languages if possible, neat and messy handwriting, and a few crossed-out answers.
 - [ ] A batch manager uploads every photo, marks absent students, and watches the status board until nothing is queued. (Batch managers do not handle appeals.)
 - [ ] Open a handful of answers by hand and compare the photo with what Gemini read.
-- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end: the student raises it, and a **teacher of the practice batch** (not the batch manager) re-grades or closes it under **Appeals**. Try an override as that teacher too, and check the student sees "Score adjusted by teacher".
+- [ ] Publish, sign in as a student (or ask one), check the results page, and try one appeal end to end: the student raises it, and a **teacher of the practice batch** (not the batch manager) re-grades or closes it under **Appeals**. Try an override as that teacher too, and check the student sees "Score adjusted by teacher". Check the student sees their own photo under each answer (and can open it full screen), and that an appeal needs a reason. Then change one score as a founder and check a teacher and the student see only the new score, with no label and no founder in the history.
 
 **C. Measure Gemini**
 

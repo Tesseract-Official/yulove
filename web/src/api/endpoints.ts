@@ -23,6 +23,7 @@ import type {
   GenerateTestsResponse,
   ImportStudentsResponse,
   MeResponse,
+  MyAnswerPhotoResponse,
   MyExamResultResponse,
   MyExamsResponse,
   OverrideBody,
@@ -150,6 +151,10 @@ export function createEndpoints(client: ApiClient) {
     // Student
     getMyExams: () => client.get<MyExamsResponse>('/me/exams'),
     getMyExam: (examId: string) => client.get<MyExamResultResponse>(`/me/exams/${enc(examId)}`),
+    getMyAnswerPhoto: (examId: string, questionNumber: number) =>
+      client.get<MyAnswerPhotoResponse>(
+        `/me/exams/${enc(examId)}/questions/${questionNumber}/photo`,
+      ),
     createAppeal: (body: CreateAppealBody) => client.post<CreateAppealResponse>('/appeals', body),
   };
 }

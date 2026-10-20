@@ -432,6 +432,30 @@ describe('an exam that is published, or made by someone else', () => {
     expect(api.callsTo('POST /exams/:id/pdf')).toHaveLength(0);
   });
 
+  it('names nobody as the exam’s maker when the API leaves them out (a super admin made it)', async () => {
+    const detail = examDetail({ status: 'READY' }, { canEdit: false });
+    delete (detail.exam as { createdBy?: string }).createdBy;
+    open(`/teacher/exams/${EXAM_ID}`, { 'GET /exams/:id': detail });
+
+    expect(
+      await screen.findByText(/Only the person who made it can change this exam/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Only the person who made the exam can make the PDF/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Made by/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/undefined|admin/i);
+  });
+
+  it('lists an exam with no maker named without a "Made by" line', async () => {
+    const exam = examSummary({ examId: 'e9', title: 'Founder exam' });
+    delete (exam as { createdBy?: string }).createdBy;
+    open('/teacher/exams', { 'GET /exams': { exams: [exam] } });
+
+    expect(await screen.findByText('Founder exam')).toBeInTheDocument();
+    expect(screen.queryByText(/Made by/)).not.toBeInTheDocument();
+  });
+
   it('lets a super admin change another teacher’s exam', async () => {
     open(
       `/teacher/exams/${EXAM_ID}`,

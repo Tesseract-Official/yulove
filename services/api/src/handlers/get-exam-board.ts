@@ -13,7 +13,7 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['BATCH_MANAGER', 'TEACHER']);
   const exam = await loadExamInBatch(ctx, pathParam(event, 'id'));
 
-  const students = (await loadExamStudents(exam)).map((s) => studentRow(exam, s));
+  const students = (await loadExamStudents(exam)).map((s) => studentRow(exam, s, ctx.user.role));
 
   const counts: ExamBoardResponse['counts'] = {};
   for (const student of students) {

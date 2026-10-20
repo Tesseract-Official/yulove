@@ -24,6 +24,10 @@ export type ExamStatus = (typeof EXAM_STATUSES)[number];
 export const APPEAL_STATUSES = ['OPEN', 'RERUN', 'CLOSED'] as const;
 export type AppealStatus = (typeof APPEAL_STATUSES)[number];
 
+/** Why a student appeals: chosen on the appeal form. */
+export const APPEAL_REASONS = ['PHOTO_UNCLEAR', 'CODE_READ_WRONG', 'WRONG_MARKS', 'OTHER'] as const;
+export type AppealReason = (typeof APPEAL_REASONS)[number];
+
 export const VERDICTS = ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 

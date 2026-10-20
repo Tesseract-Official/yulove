@@ -457,3 +457,60 @@ describe('a teacher reviewing an appeal', () => {
     );
   });
 });
+
+describe('what the reviewer sees together on one appeal', () => {
+  const REASONED = (reason: 'PHOTO_UNCLEAR' | 'CODE_READ_WRONG') =>
+    appealSummary({ reason, message: 'The bottom line is cut off.' });
+
+  it('shows the reason, the message, the photo, the transcription and the test results on one page', async () => {
+    open('TEACHER', detail(), {
+      'GET /appeals': { examId: EXAM_ID, appeals: [REASONED('CODE_READ_WRONG')] },
+      'GET /answers/:examId/:studentEmail/:q': answerDetail({
+        imageUrl: 'https://bucket/answers/exam-1/R1/q1.jpg?sig=1',
+        imageExpiresInSeconds: 900,
+        rawTranscription: 'def solve(nums): return 1',
+        verdicts: [
+          { index: 0, kind: 'small', verdict: 'WA', input: '1', expected: '2', actual: '1' },
+        ],
+      }),
+    });
+
+    expect(await screen.findByText('My code was read wrong')).toBeInTheDocument();
+    expect(screen.getByText(/The bottom line is cut off\./)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('img', { name: /Answer photo for question 1/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/def solve\(nums\): return 1/)).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Test results' })).toBeInTheDocument();
+  });
+
+  it('tells the teacher to ask the batch manager for a better photo when the photo was the problem', async () => {
+    open('TEACHER', detail(), {
+      'GET /appeals': { examId: EXAM_ID, appeals: [REASONED('PHOTO_UNCLEAR')] },
+    });
+
+    expect(await screen.findByText('Photo is unclear or cut off')).toBeInTheDocument();
+    expect(
+      screen.getByText('Ask the batch manager to upload a better photo, then re-grade.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not give that note for another reason, or for an old appeal with no reason', async () => {
+    open('TEACHER', detail(), {
+      'GET /appeals': { examId: EXAM_ID, appeals: [REASONED('CODE_READ_WRONG')] },
+    });
+    await screen.findByText('My code was read wrong');
+    expect(screen.queryByText(/Ask the batch manager/)).not.toBeInTheDocument();
+  });
+
+  it('names nobody as the handler when the API leaves one out (a super admin handled it)', async () => {
+    open('TEACHER', detail('ap2'), {
+      'GET /appeals': { examId: EXAM_ID, appeals: [OTHERS[0]!] },
+    });
+
+    expect(await screen.findByText('Outcome')).toBeInTheDocument();
+    expect(screen.getByText('Note: Fine as it was.')).toBeInTheDocument();
+    expect(screen.queryByText(/ by /)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/admin/i);
+  });
+});

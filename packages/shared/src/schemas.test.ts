@@ -193,6 +193,7 @@ describe('request body schemas', () => {
     const parsed = createAppealBody.parse({
       examId: 'e1',
       questionNumber: 2,
+      reason: 'WRONG_MARKS',
       message: 'Please recheck',
       studentEmail: 'attacker@college.edu',
     });
@@ -203,14 +204,35 @@ describe('request body schemas', () => {
 describe('appeal bodies', () => {
   it('a message is required, trimmed and at most 1000 characters', () => {
     const body = (message: string) =>
-      createAppealBody.safeParse({ examId: 'e1', questionNumber: 1, message });
+      createAppealBody.safeParse({ examId: 'e1', questionNumber: 1, reason: 'OTHER', message });
     expect(body('x'.repeat(1000)).success).toBe(true);
     expect(body('x'.repeat(1001)).success).toBe(false);
     expect(body('   ').success).toBe(false);
     expect(body('').success).toBe(false);
     expect(
-      createAppealBody.parse({ examId: 'e1', questionNumber: 1, message: '  hi  ' }).message,
+      createAppealBody.parse({
+        examId: 'e1',
+        questionNumber: 1,
+        reason: 'OTHER',
+        message: '  hi  ',
+      }).message,
     ).toBe('hi');
+  });
+
+  it('a reason is required and must be one of the four choices', () => {
+    const body = (reason?: string) =>
+      createAppealBody.safeParse({
+        examId: 'e1',
+        questionNumber: 1,
+        message: 'hi',
+        ...(reason === undefined ? {} : { reason }),
+      });
+    expect(body().success).toBe(false);
+    expect(body('').success).toBe(false);
+    expect(body('BECAUSE').success).toBe(false);
+    for (const reason of ['PHOTO_UNCLEAR', 'CODE_READ_WRONG', 'WRONG_MARKS', 'OTHER']) {
+      expect(body(reason).success, reason).toBe(true);
+    }
   });
 
   it('PUT /appeals takes a closing note or a rerun', async () => {

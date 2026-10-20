@@ -45,7 +45,7 @@ export function ExamsPage() {
               <p className="muted">
                 {batchName(exam.batchId)} · {exam.date} · {plural(exam.questionCount, 'question')}
               </p>
-              {exam.createdBy !== me.email ? (
+              {exam.createdBy !== undefined && exam.createdBy !== me.email ? (
                 <p className="muted break">Made by {exam.createdBy}</p>
               ) : null}
               <div className="actions">

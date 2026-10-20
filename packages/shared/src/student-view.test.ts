@@ -134,7 +134,7 @@ describe('studentQuestionView', () => {
     expect(v.testsPassed).toBeUndefined();
   });
 
-  it('says "Score adjusted by admin" and shows the override as the score, not why', () => {
+  it('shows a super admin’s override as the score only: no label, no trace of who or why', () => {
     const v = view(
       answer({
         override: {
@@ -146,9 +146,10 @@ describe('studentQuestionView', () => {
         },
       }),
     );
-    expect(v).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'admin' });
-    expect(v.messages).toContain('Score adjusted by admin');
-    expect(JSON.stringify(v)).not.toMatch(/PRIVATE REASON|admin@x.com|SUPER_ADMIN/);
+    expect(v).toMatchObject({ score: 9, adjusted: false });
+    expect(v).not.toHaveProperty('adjustedBy');
+    expect(v.messages).toEqual([]);
+    expect(JSON.stringify(v)).not.toMatch(/PRIVATE REASON|admin|SUPER_ADMIN/i);
   });
 
   it('says "Score adjusted by teacher" for a teacher’s override, without their name, email or reason', () => {
@@ -165,14 +166,24 @@ describe('studentQuestionView', () => {
     );
     expect(v).toMatchObject({ score: 9, adjusted: true, adjustedBy: 'teacher' });
     expect(v.messages).toContain('Score adjusted by teacher');
-    expect(v.messages).not.toContain('Score adjusted by admin');
     expect(JSON.stringify(v)).not.toMatch(/PRIVATE REASON|tina@x.com|TEACHER|"by"/);
   });
 
-  it('reads an override from before roles were recorded as made by an admin', () => {
+  it('reads an override from before roles were recorded as a super admin’s: no label', () => {
     const v = view(answer({ override: { score: 9, reason: 'r', by: 'old@x.com', at: 't' } }));
-    expect(v).toMatchObject({ adjusted: true, adjustedBy: 'admin' });
-    expect(v.messages).toContain('Score adjusted by admin');
+    expect(v).toMatchObject({ score: 9, adjusted: false });
+    expect(v.messages).toEqual([]);
+  });
+
+  it('says whether there is a photo to look at, without saying where it is', () => {
+    expect(view(answer({ imageKey: 'answers/e/R1/q1.jpg' }))).toMatchObject({ hasPhoto: true });
+    const noPhoto = answer();
+    delete noPhoto.imageKey;
+    expect(view(noPhoto)).toMatchObject({ hasPhoto: false });
+    expect(view(undefined)).toMatchObject({ hasPhoto: false });
+    expect(JSON.stringify(view(answer({ imageKey: 'answers/e/R1/q1.jpg' })))).not.toContain(
+      'answers/',
+    );
   });
 
   it('treats unfinished and missing answers as such', () => {

@@ -136,7 +136,7 @@ function ExamEditor({ detail }: { detail?: ExamDetailResponse }) {
       {exam ? (
         <p>
           <Chip tone={EXAM_STATUS_TONE[exam.status]}>{EXAM_STATUS_LABEL[exam.status]}</Chip>{' '}
-          {exam.createdBy !== me.email ? (
+          {exam.createdBy !== undefined && exam.createdBy !== me.email ? (
             <span className="muted break">Made by {exam.createdBy}</span>
           ) : null}
         </p>
@@ -148,7 +148,8 @@ function ExamEditor({ detail }: { detail?: ExamDetailResponse }) {
         </Notice>
       ) : exam && !detail?.canEdit ? (
         <Notice kind="info">
-          Only {exam.createdBy} can change this exam. You can look at it here.
+          Only {exam.createdBy ?? 'the person who made it'} can change this exam. You can look at it
+          here.
         </Notice>
       ) : detail?.hasAnswers ? (
         <Notice kind="warning">
@@ -377,7 +378,10 @@ function ExamEditor({ detail }: { detail?: ExamDetailResponse }) {
             />
           </div>
           {!mine ? (
-            <p className="muted">Only {exam.createdBy} can make the PDF. You can download it.</p>
+            <p className="muted">
+              Only {exam.createdBy ?? 'the person who made the exam'} can make the PDF. You can
+              download it.
+            </p>
           ) : null}
           {makePdf.isError ? <Notice kind="error">{errorMessage(makePdf.error)}</Notice> : null}
           {exam.status !== 'DRAFT' ? (

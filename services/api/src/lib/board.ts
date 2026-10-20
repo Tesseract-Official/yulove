@@ -1,6 +1,7 @@
 import {
   computeQuestionScore,
   normaliseEmail,
+  overrideVisibleTo,
   type AnswerStatus,
   type BoardStudentRow,
   type CellStatus,
@@ -8,6 +9,7 @@ import {
   type ExamItem,
   type ExamQuestionRef,
   type QuestionCell,
+  type Role,
   type UserItem,
 } from '@yulove/shared';
 import { answersDb, examStudentsDb, totalFor, usersDb } from '@yulove/shared/server';
@@ -58,6 +60,7 @@ export function questionCell(
   ref: Pick<ExamQuestionRef, 'number' | 'marks'>,
   answer: ExamAnswerSummary | undefined,
   absent: boolean,
+  viewer: Role,
 ): QuestionCell {
   return {
     number: ref.number,
@@ -66,12 +69,17 @@ export function questionCell(
     ...(answer?.failReason ? { failReason: answer.failReason } : {}),
     ...(answer?.failDetail ? { failDetail: answer.failDetail } : {}),
     score: computeQuestionScore(ref.marks, answer, absent),
-    overridden: answer?.override !== undefined && !absent,
+    // A super admin's override counts in the score but is not marked for anyone else.
+    overridden: overrideVisibleTo(viewer, answer?.override) !== undefined && !absent,
   };
 }
 
 /** One student's row: a cell per question and the total. */
-export function studentRow(exam: ExamItem, student: ExamStudentView): BoardStudentRow {
+export function studentRow(
+  exam: ExamItem,
+  student: ExamStudentView,
+  viewer: Role,
+): BoardStudentRow {
   const byNumber = new Map(student.answers.map((a) => [a.questionNumber, a]));
   const total = totalFor(exam, student.answers, student.absent);
   return {
@@ -80,7 +88,9 @@ export function studentRow(exam: ExamItem, student: ExamStudentView): BoardStude
     rollNo: student.user.rollNo,
     active: student.user.active !== false,
     absent: student.absent,
-    questions: exam.questions.map((q) => questionCell(q, byNumber.get(q.number), student.absent)),
+    questions: exam.questions.map((q) =>
+      questionCell(q, byNumber.get(q.number), student.absent, viewer),
+    ),
     totalScore: total.totalScore,
     maxScore: total.maxScore,
   };

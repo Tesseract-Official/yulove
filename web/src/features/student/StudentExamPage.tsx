@@ -1,17 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   APPEAL_MESSAGE_MAX,
+  APPEAL_REASONS,
   MESSAGES,
+  type AppealReason,
   type FailedSmallTest,
   type StudentQuestionView,
 } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { errorMessage } from '../../api/errors.js';
 import { ErrorState, Loading } from '../../ui/states.js';
+import { FullscreenPhoto } from '../common/FullscreenPhoto.js';
 import { keys } from '../common/hooks.js';
-import { STUDENT_APPEAL_TEXT, STUDENT_VERDICT_TEXT } from '../common/labels.js';
+import { APPEAL_REASON_TEXT, STUDENT_APPEAL_TEXT, STUDENT_VERDICT_TEXT } from '../common/labels.js';
 import { Chip, Field, Notice, PageHeader } from '../common/ui.js';
 
 /** Short one-line values are shown as they are; long ones are folded away. */
@@ -54,10 +57,7 @@ function FailedSmallTest({ test }: { test: FailedSmallTest }) {
 /** One of the lines the API gives a question, as a message box of the right kind. */
 function MessageLine({ text }: { text: string }) {
   const kind =
-    text === MESSAGES.adjusted ||
-    text === MESSAGES.adjustedByTeacher ||
-    text === MESSAGES.absent ||
-    text === MESSAGES.inProgress
+    text === MESSAGES.adjustedByTeacher || text === MESSAGES.absent || text === MESSAGES.inProgress
       ? 'info'
       : 'warning';
   return <Notice kind={kind}>{text}</Notice>;
@@ -68,14 +68,17 @@ function AppealForm({ examId, questionNumber }: { examId: string; questionNumber
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [reason, setReason] = useState<AppealReason | undefined>();
   const [problem, setProblem] = useState<string | undefined>();
 
   const send = useMutation({
-    mutationFn: (text: string) => api.createAppeal({ examId, questionNumber, message: text }),
+    mutationFn: (input: { reason: AppealReason; text: string }) =>
+      api.createAppeal({ examId, questionNumber, reason: input.reason, message: input.text }),
     meta: { errorToast: false },
     onSuccess: async () => {
       setOpen(false);
       setMessage('');
+      setReason(undefined);
       setProblem(undefined);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: keys.myExam(examId) }),
@@ -92,12 +95,13 @@ function AppealForm({ examId, questionNumber }: { examId: string; questionNumber
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const text = message.trim();
+    if (!reason) return setProblem('Choose what went wrong first.');
     if (text === '') return setProblem('Write a short message for the reviewer first.');
     if (text.length > APPEAL_MESSAGE_MAX) {
       return setProblem(`The message is too long (${APPEAL_MESSAGE_MAX} characters at most).`);
     }
     setProblem(undefined);
-    send.mutate(text);
+    send.mutate({ reason, text });
   };
 
   if (!open) {
@@ -110,6 +114,22 @@ function AppealForm({ examId, questionNumber }: { examId: string; questionNumber
 
   return (
     <form className="form" onSubmit={submit} noValidate>
+      <fieldset className="appeal-reasons">
+        <legend>What went wrong with question {questionNumber}?</legend>
+        {APPEAL_REASONS.map((value) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name={`appeal-reason-${questionNumber}`}
+              value={value}
+              checked={reason === value}
+              required
+              onChange={() => setReason(value)}
+            />
+            {APPEAL_REASON_TEXT[value]}
+          </label>
+        ))}
+      </fieldset>
       <Field
         label={`Tell the reviewer what you think is wrong with question ${questionNumber}`}
         error={problem}
@@ -139,6 +159,65 @@ function AppealForm({ examId, questionNumber }: { examId: string; questionNumber
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * The student's own photo for a question, exactly as it was graded. The link lasts 5 minutes, so
+ * it is asked for again before then and whenever the picture fails to load; tapping the photo
+ * opens it full screen.
+ */
+function MyPhoto({ examId, number }: { examId: string; number: number }) {
+  const api = useApi();
+  const [open, setOpen] = useState(false);
+  // One automatic retry if the picture fails to load (an expired link); then the student can retry.
+  const retriedImage = useRef(false);
+  const photo = useQuery({
+    queryKey: keys.myPhoto(examId, number),
+    queryFn: () => api.getMyAnswerPhoto(examId, number),
+    meta: { errorToast: false },
+    retry: false,
+    // Links last 5 minutes: ask again well before one runs out.
+    staleTime: 4 * 60 * 1000,
+    refetchInterval: 4 * 60 * 1000,
+  });
+  const label = `Your photo for question ${number}`;
+
+  if (photo.isPending) return <p className="muted">Loading your photo…</p>;
+  if (photo.isError) {
+    return (
+      <p className="muted">
+        Your photo could not be loaded.{' '}
+        <button type="button" className="button" onClick={() => void photo.refetch()}>
+          Try again
+        </button>
+      </p>
+    );
+  }
+  return (
+    <div className="my-photo">
+      <h3>Your photo</h3>
+      <button
+        type="button"
+        className="my-photo-button"
+        aria-label={`${label}: open full screen`}
+        onClick={() => setOpen(true)}
+      >
+        <img
+          src={photo.data.url}
+          alt={label}
+          onError={() => {
+            if (retriedImage.current) return;
+            retriedImage.current = true;
+            void photo.refetch();
+          }}
+        />
+      </button>
+      <p className="muted">Tap the photo to see it full screen and zoom in.</p>
+      {open ? (
+        <FullscreenPhoto src={photo.data.url} alt={label} onClose={() => setOpen(false)} />
+      ) : null}
+    </div>
   );
 }
 
@@ -190,11 +269,14 @@ function QuestionCard({ examId, view }: { examId: string; view: StudentQuestionV
         </div>
       ) : null}
 
+      {view.hasPhoto ? <MyPhoto examId={examId} number={view.number} /> : null}
+
       {appeal ? (
         <div className="appeal-box">
           <p>
             <strong>Your appeal:</strong> <Chip>{STUDENT_APPEAL_TEXT[appeal.status]}</Chip>
           </p>
+          {appeal.reason ? <p className="muted">{APPEAL_REASON_TEXT[appeal.reason]}</p> : null}
           <p className="muted break">“{appeal.message}”</p>
           {appeal.note ? (
             <p>

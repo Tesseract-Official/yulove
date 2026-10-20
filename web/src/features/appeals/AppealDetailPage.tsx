@@ -10,7 +10,12 @@ import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
 import { ScoreTools } from '../common/ScoreTools.js';
 import { AnswerDetail } from '../common/AnswerDetail.js';
 import { keys, useAnswer, useAppeals } from '../common/hooks.js';
-import { APPEAL_STATUS_LABEL, APPEAL_STATUS_TONE } from '../common/labels.js';
+import {
+  APPEAL_REASON_TEXT,
+  APPEAL_STATUS_LABEL,
+  APPEAL_STATUS_TONE,
+  PHOTO_UNCLEAR_NOTE,
+} from '../common/labels.js';
 import { PhotoInputs } from '../common/PhotoInputs.js';
 import { Chip, Field, Notice, PageHeader } from '../common/ui.js';
 import { PhotoCropper } from '../manager/PhotoCropper.js';
@@ -275,9 +280,17 @@ export function AppealDetailPage() {
           <Chip tone={APPEAL_STATUS_TONE[appeal.status]}>{APPEAL_STATUS_LABEL[appeal.status]}</Chip>{' '}
           <span className="muted">{new Date(appeal.createdAt).toLocaleString()}</span>
         </p>
+        {appeal.reason ? (
+          <p>
+            <strong>Reason:</strong> {APPEAL_REASON_TEXT[appeal.reason]}
+          </p>
+        ) : null}
         <p className="break">
           <strong>The student wrote:</strong> “{appeal.message}”
         </p>
+        {appeal.reason === 'PHOTO_UNCLEAR' ? (
+          <Notice kind="info">{PHOTO_UNCLEAR_NOTE}</Notice>
+        ) : null}
       </div>
 
       <div className="toolbar">

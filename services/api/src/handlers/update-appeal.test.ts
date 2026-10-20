@@ -162,7 +162,7 @@ describe('PUT /appeals/{id}: RERUN', () => {
         method: 'POST',
         path: '/appeals',
         email: S1,
-        body: { examId: EXAM_ID, questionNumber: 1, message: 'Still wrong' },
+        body: { examId: EXAM_ID, questionNumber: 1, reason: 'OTHER', message: 'Still wrong' },
       }),
     );
     expect(again.status).toBe(201);

@@ -20,5 +20,8 @@
     "aws-cdk": "^2.1145.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15"
+  },
+  "exports": {
+    "./routes": "./src/routes.ts"
   }
 }

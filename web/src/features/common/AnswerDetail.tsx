@@ -135,8 +135,10 @@ export function AnswerDetail({
 
       {a.override ? (
         <Notice kind="info">
-          Score adjusted by {a.override.byRole === 'TEACHER' ? 'teacher' : 'admin'} to{' '}
-          {a.override.score} (by {a.override.by}, {new Date(a.override.at).toLocaleString()}):{' '}
+          {a.override.byRole === 'TEACHER'
+            ? 'Score adjusted by teacher'
+            : 'Super admin override (hidden from teachers, batch managers and students)'}{' '}
+          to {a.override.score} (by {a.override.by}, {new Date(a.override.at).toLocaleString()}):{' '}
           {a.override.reason}
         </Notice>
       ) : null}

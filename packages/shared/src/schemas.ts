@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMPARE_MODES, STAFF_ROLES } from './enums.js';
+import { APPEAL_REASONS, COMPARE_MODES, STAFF_ROLES } from './enums.js';
 
 const email = z.string().trim().toLowerCase().pipe(z.email());
 const id = z.string().trim().min(1).max(128);
@@ -155,6 +155,7 @@ export const APPEAL_MESSAGE_MAX = 1_000;
 export const createAppealBody = z.object({
   examId: id,
   questionNumber: positiveInt,
+  reason: z.enum(APPEAL_REASONS),
   message: nonEmptyText(APPEAL_MESSAGE_MAX),
 });
 export type CreateAppealBody = z.infer<typeof createAppealBody>;

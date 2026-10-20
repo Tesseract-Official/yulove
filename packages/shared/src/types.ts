@@ -1,5 +1,6 @@
 import type {
   AnswerStatus,
+  AppealReason,
   AppealStatus,
   CompareMode,
   ExamStatus,
@@ -185,6 +186,8 @@ export interface AppealItem {
   examId: string;
   studentEmail: string;
   questionNumber: number;
+  /** Why the student appealed. Absent on appeals made before reasons existed. */
+  reason?: AppealReason;
   message: string;
   status: AppealStatus;
   handledBy?: string;

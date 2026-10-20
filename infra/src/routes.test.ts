@@ -165,7 +165,7 @@ const EXPECTED: Expected[] = [
   {
     // The only route that reads the audit log (all of them may append to it).
     routeKey: 'GET /answers/{examId}/{studentEmail}/{q}/audit',
-    tables: { Users: 'read', Answers: 'read', AuditLog: 'read' },
+    tables: { Users: 'read', Exams: 'read', Answers: 'read', AuditLog: 'read' },
   },
   {
     routeKey: 'GET /me/exams',
@@ -181,6 +181,11 @@ const EXPECTED: Expected[] = [
       Questions: 'read',
       Appeals: 'read',
     },
+  },
+  {
+    routeKey: 'GET /me/exams/{id}/questions/{q}/photo',
+    tables: { Users: 'read', Exams: 'read', ExamStudents: 'read', Answers: 'read' },
+    bucket: { actions: ['s3:GetObject'], pattern: 'answers/*' },
   },
 ];
 

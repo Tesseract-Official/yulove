@@ -6,13 +6,14 @@ import {
   type AppealListResponse,
   type AppealStatus,
 } from '@yulove/shared';
-import { appealsDb, requireUser, usersDb } from '@yulove/shared/server';
+import { appealsDb, makeActorResolver, requireUser, usersDb } from '@yulove/shared/server';
 import { loadReviewableExam } from '../lib/exams.js';
 import { apiHandler, queryParam, type ApiEvent, type ApiResult } from '../lib/http.js';
 
 /**
  * GET /appeals?examId=&status= (teacher of the exam's batch, or a super admin): the appeals of one
- * exam, newest first, with the student's name and roll number.
+ * exam, newest first, with the student's name and roll number. `handledBy` is left out when a
+ * super admin handled the appeal and the caller is not one.
  */
 export async function handle(event: ApiEvent): Promise<ApiResult> {
   const ctx = await requireUser(event, ['TEACHER']);
@@ -35,13 +36,23 @@ export async function handle(event: ApiEvent): Promise<ApiResult> {
   );
   const byEmail = new Map(students.flatMap((u) => (u ? [[u.email, u] as const] : [])));
 
+  const actors = makeActorResolver(ctx.user.role);
+  const handlers = new Map<string, string | undefined>();
+  for (const email of new Set(appeals.flatMap((a) => (a.handledBy ? [a.handledBy] : [])))) {
+    handlers.set(email, await actors.visible(email));
+  }
+
   const body: AppealListResponse = {
     examId: exam.examId,
-    appeals: appeals.map((a) => ({
-      ...a,
-      studentName: byEmail.get(a.studentEmail)?.name,
-      rollNo: byEmail.get(a.studentEmail)?.rollNo,
-    })),
+    appeals: appeals.map(({ handledBy, ...rest }) => {
+      const shown = handledBy === undefined ? undefined : handlers.get(handledBy);
+      return {
+        ...rest,
+        ...(shown ? { handledBy: shown } : {}),
+        studentName: byEmail.get(rest.studentEmail)?.name,
+        rollNo: byEmail.get(rest.studentEmail)?.rollNo,
+      };
+    }),
   };
   return { status: 200, body };
 }

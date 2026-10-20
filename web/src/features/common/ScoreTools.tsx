@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useContext, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AnswerDetailResponse, AuditEntry, Role } from '@yulove/shared';
 import { useApi } from '../../api/ApiContext.js';
 import { ApiError, errorMessage } from '../../api/errors.js';
 import { EmptyState, ErrorState, Loading } from '../../ui/states.js';
+import { MeContext } from '../../session/MeContext.js';
 import { keys } from './hooks.js';
-import { Field, Notice } from './ui.js';
+import { Chip, Field, Notice } from './ui.js';
 
 const REASON_MAX = 1000;
 
@@ -104,6 +105,7 @@ function OverrideDialog({
   };
 
   const absent = save.error instanceof ApiError && save.error.status === 409;
+  const isSuperAdmin = useContext(MeContext)?.role === 'SUPER_ADMIN';
 
   return (
     <div className="modal-backdrop">
@@ -111,7 +113,10 @@ function OverrideDialog({
         <h2 id="override-title">Override score</h2>
         <p className="muted">
           Question {answer.questionNumber} is worth {answer.marks} marks. The change is recorded in
-          the audit history, and the student is told the score was adjusted by an admin.
+          the audit history.{' '}
+          {isSuperAdmin
+            ? 'Students, teachers and batch managers are not told it was you: they only see the new score.'
+            : 'The student is told the score was adjusted by a teacher.'}
         </p>
         {answer.override ? (
           <Notice kind="info">
@@ -218,9 +223,19 @@ const scoreOf = (state: unknown, key: 'displayedScore' | 'override'): number | n
 function AuditRow({ entry }: { entry: AuditEntry }) {
   const before = scoreOf(entry.before, 'displayedScore');
   const after = scoreOf(entry.after, 'displayedScore');
+  // Only super admins are sent these entries; entries with no stored role are theirs too.
+  const bySuperAdmin = entry.actorRole === undefined || entry.actorRole === 'SUPER_ADMIN';
   return (
     <li className="row">
-      <span className="row-title">{ACTION_TEXT[entry.action] ?? entry.action}</span>
+      <span className="row-title">
+        {ACTION_TEXT[entry.action] ?? entry.action}
+        {bySuperAdmin ? (
+          <>
+            {' '}
+            <Chip tone="progress">Super admin action: hidden from everyone else</Chip>
+          </>
+        ) : null}
+      </span>
       <span>
         Score {before ?? '?'} → {after ?? '?'}
       </span>

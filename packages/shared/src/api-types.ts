@@ -76,8 +76,8 @@ export interface ExamSummary {
   date: string;
   status: ExamStatus;
   questionCount: number;
-  /** Email of the teacher who made the exam. */
-  createdBy: string;
+  /** Email of the teacher who made the exam; left out when a super admin made it (and the caller is not one). */
+  createdBy?: string | undefined;
 }
 
 /** GET /exams?batchId= */
@@ -332,7 +332,8 @@ export interface ExamDetailResponse {
     title: string;
     date: string;
     status: ExamStatus;
-    createdBy: string;
+    /** Left out when a super admin made the exam (and the caller is not one). */
+    createdBy?: string | undefined;
     publishedAt: string | undefined;
     questions: ExamDetailQuestion[];
   };
@@ -416,6 +417,12 @@ export interface MyExamResultResponse {
   totalScore: number;
   maxScore: number;
   questions: StudentQuestionView[];
+}
+
+/** GET /me/exams/{id}/questions/{q}/photo: a short-lived link to the student's own graded photo. */
+export interface MyAnswerPhotoResponse {
+  url: string;
+  expiresInSeconds: number;
 }
 
 /** One appeal in the review queue, with the student's name and roll number. */
