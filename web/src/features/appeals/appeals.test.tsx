@@ -1,27 +1,12 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeOidc, fakeUser, meFor, renderApp } from '../../test/helpers.js';
 import { EXAM_ID, answerDetail, appealSummary, examSummary } from '../../test/fixtures.js';
 import { apiError, mockApi, type Route } from '../../test/mockApi.js';
 
-// Same stand-ins as the upload tests: jsdom has no layout, so the cropper is replaced, and the
-// canvas work is replaced with a fixed result.
-vi.mock('react-easy-crop', () => {
-  interface Props {
-    rotation: number;
-    aspect: number;
-    onCropComplete: (percent: unknown, pixels: unknown) => void;
-  }
-  function FakeCropper({ rotation, aspect, onCropComplete }: Props) {
-    useEffect(() => {
-      onCropComplete({}, { x: 10, y: 20, width: 300, height: 400 });
-    }, [rotation, aspect]); // eslint-disable-line react-hooks/exhaustive-deps
-    return <div data-testid="easy-crop" />;
-  }
-  return { default: FakeCropper };
-});
+// Same stand-ins as the upload tests: jsdom has no canvas, so the photo work is replaced with a
+// fixed result, and (in beforeEach) the crop screen is given a size to lay itself out in.
 const compressed = new Blob([new Uint8Array(123_456)], { type: 'image/jpeg' });
 vi.mock('../../imaging/imaging.js', () => ({
   prepareImage: vi.fn(async () => ({
@@ -29,6 +14,7 @@ vi.mock('../../imaging/imaging.js', () => ({
     width: 3200,
     height: 2400,
   })),
+  suggestCrop: vi.fn(async () => null),
   cropAndCompress: vi.fn(async () => ({
     blob: compressed,
     width: 1500,
@@ -104,8 +90,24 @@ function open(
 const queue = () => `/teacher/appeals?batch=A&exam=${EXAM_ID}`;
 const detail = (id = 'ap1') => `/teacher/appeals/${EXAM_ID}/${id}?batch=A`;
 
-beforeEach(() => vi.clearAllMocks());
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 400,
+    bottom: 600,
+    width: 400,
+    height: 600,
+    toJSON: () => ({}),
+  });
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('the appeal queue', () => {
   it('lists the appeals with every open one first, then the rest newest first', async () => {
@@ -354,8 +356,12 @@ describe('what a reviewer can do', () => {
       camera,
       new File([new Uint8Array(500_000)], 'new.jpg', { type: 'image/jpeg' }),
     );
-    expect(await screen.findByTestId('easy-crop')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Use this photo and grade again' }));
+    // The same adjust screen as for the batch manager, then a preview of the finished photo.
+    expect(await screen.findByTestId('crop-box')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Use this photo and grade again' }),
+    );
 
     expect(await screen.findByText(/Sent for grading again/)).toBeInTheDocument();
     expect(api.callsTo('POST /answers/upload-url')[0]?.body).toEqual({
@@ -394,6 +400,7 @@ describe('what a reviewer can do', () => {
       screen.getByLabelText('Choose a file'),
       new File(['x'], 'new.jpg', { type: 'image/jpeg' }),
     );
+    await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
     await userEvent.click(
       await screen.findByRole('button', { name: 'Use this photo and grade again' }),
     );

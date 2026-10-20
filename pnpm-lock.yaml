@@ -226,9 +226,6 @@ importers:
       react-dom:
         specifier: ^18
         version: 18.3.1(react@18.3.1)
-      react-easy-crop:
-        specifier: ^6.2.4
-        version: 6.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-router-dom:
         specifier: ^7.18.4
         version: 7.18.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1843,9 +1840,6 @@ packages:
     resolution: {integrity: sha512-5qr2okC4ItAI0hG5SaV0HoYMpnM/Y6+Oqr7AmPYy/2uEoGvS+GbSKLeRxSS1uAdu59yz0ouzcuXievSgg///WA==}
     engines: {node: '>=18'}
 
-  normalize-wheel@1.0.1:
-    resolution: {integrity: sha512-1OnlAPZ3zgrk8B91HyRj+eVv+kS5u+Z0SCsak6Xil/kmgEia50ga7zfkumayonZrImffAxPU/5WcyGhzetHNPA==}
-
   obliterator@1.6.1:
     resolution: {integrity: sha512-9WXswnqINnnhOG/5SLimUlzuU1hFJUc8zkwyD59Sd+dPOMf05PmnYG/d6Q7HZ+KmgkZJa1PxRso6QdM3sTNHig==}
 
@@ -1940,12 +1934,6 @@ packages:
     resolution: {integrity: sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==}
     peerDependencies:
       react: ^18.3.1
-
-  react-easy-crop@6.2.4:
-    resolution: {integrity: sha512-OWdnFYctzUNlekjob+bQfloG9wyhIBkkmeISnM5XVE4Byqn0jmVxDF7oz85ovUF+EIPQyj0yAHbBEFtnxwGv4g==}
-    peerDependencies:
-      react: '>=16.4.0'
-      react-dom: '>=16.4.0'
 
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
@@ -3877,8 +3865,6 @@ snapshots:
 
   node-releases@2.0.59: {}
 
-  normalize-wheel@1.0.1: {}
-
   obliterator@1.6.1: {}
 
   obug@3.0.0: {}
@@ -3983,12 +3969,6 @@ snapshots:
       loose-envify: 1.4.0
       react: 18.3.1
       scheduler: 0.23.2
-
-  react-easy-crop@6.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      normalize-wheel: 1.0.1
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
 
   react-is@17.0.2: {}
 

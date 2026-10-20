@@ -72,6 +72,7 @@ p {
 
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -717,30 +718,6 @@ summary {
   outline-offset: 2px;
 }
 
-.cropper {
-  position: relative;
-  height: min(70vh, 30rem);
-  background: #111;
-  border-radius: var(--radius);
-  overflow: hidden;
-  touch-action: none;
-}
-
-.cropper-box {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.tools {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.tools .button {
-  flex: 1;
-}
-
 .shapes {
   display: flex;
   flex-wrap: wrap;
@@ -1362,4 +1339,366 @@ textarea {
   align-items: center;
   gap: 0.5rem;
   min-height: var(--tap);
+}
+
+/* Upload answers: one screen from camera to send */
+
+.content:has(> .capture-page) {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.capture-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.5rem;
+}
+
+.flow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.flow-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+}
+
+.flow-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.flow-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.flow-nav .button {
+  min-width: var(--tap);
+  padding: 0 0.625rem;
+}
+
+.flow-question {
+  min-width: 4.5rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.progress-row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.progress-chip {
+  min-height: var(--tap);
+  padding: 0 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.progress-chip:disabled {
+  cursor: default;
+}
+
+.progress-chip.is-selected {
+  border-color: var(--accent);
+}
+
+.progress-photo {
+  background: #e6f4ea;
+}
+
+.progress-sending {
+  background: #fff4d6;
+}
+
+.progress-failed {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.capture-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 12rem;
+}
+
+.capture-title {
+  margin: 0;
+  text-align: center;
+}
+
+.capture-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.capture-take {
+  min-height: 4.5rem;
+  font-size: 1.25rem;
+}
+
+.adjuster {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.adjuster-stage {
+  position: relative;
+  flex: 1;
+  min-height: 18rem;
+  overflow: hidden;
+  background: #111;
+  border-radius: var(--radius);
+  /* The screen handles pinch and drag itself, so the browser must not scroll or zoom the page. */
+  touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.adjuster-photo {
+  position: absolute;
+  pointer-events: none;
+}
+
+.adjuster-photo img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  transform-origin: center center;
+  -webkit-user-drag: none;
+}
+
+.adjuster-crop {
+  position: absolute;
+  border: 2px solid #fff;
+  /* Darkens everything outside the box. The stage clips it. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.adjuster-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.adjuster-handle-n,
+.adjuster-handle-s {
+  width: 32px;
+  height: 10px;
+  margin: -5px 0 0 -16px;
+}
+
+.adjuster-handle-e,
+.adjuster-handle-w {
+  width: 10px;
+  height: 32px;
+  margin: -16px 0 0 -5px;
+}
+
+.adjuster-zoom {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.8125rem;
+  pointer-events: none;
+}
+
+.adjuster-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.adjuster-tools {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.adjuster-tools .button {
+  flex: 1;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0 0.25rem;
+  font-size: 1.125rem;
+}
+
+.adjuster-tools .button:last-child {
+  flex: 1.8;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+}
+
+.adjuster-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.adjuster-actions .button {
+  min-height: 3.25rem;
+}
+
+.adjuster-actions .button-primary {
+  flex: 1;
+  width: auto;
+}
+
+.cropper-adjust {
+  display: flex;
+  flex-direction: column;
+  min-height: 28rem;
+}
+
+.preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.preview-frame {
+  flex: 1;
+  min-height: 16rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.preview-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.preview-info {
+  margin: 0;
+  text-align: center;
+}
+
+.upload-status {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+}
+
+.upload-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.upload-status h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.upload-rows {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.upload-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.upload-row-error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.upload-row-actions,
+.upload-row-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.upload-row-progress progress {
+  flex: 1;
+  height: 0.75rem;
+}
+
+.retry-chip {
+  min-height: var(--tap);
+  padding: 0 1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.unsent-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #fff4d6;
+  border-bottom: 1px solid var(--border);
+}
+
+.unsent-banner-failed {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.unsent-banner .button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
-import { PhotoUploadError, postToS3 } from './upload.js';
+import { PhotoUploadError, postToS3, uploadPhoto, type XhrLike } from './upload.js';
 
 const presigned = {
   url: 'https://bucket.s3.ap-south-1.amazonaws.com/',
@@ -65,5 +65,139 @@ describe('postToS3', () => {
     const error = await postToS3(presigned, photo, offline).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(PhotoUploadError);
     expect((error as Error).message).toMatch(/Check your connection/);
+  });
+});
+
+/** A stand-in for XMLHttpRequest that the test drives by hand. */
+class FakeXhr implements XhrLike {
+  upload: XhrLike['upload'] = { onprogress: null };
+  status = 0;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  ontimeout: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  opened: Array<[string, string]> = [];
+  body: FormData | undefined;
+  aborted = false;
+  open(method: string, url: string) {
+    this.opened.push([method, url]);
+  }
+  send(body: FormData) {
+    this.body = body;
+  }
+  abort() {
+    this.aborted = true;
+    this.onabort?.();
+  }
+  progress(loaded: number, total: number, lengthComputable = true) {
+    this.upload.onprogress?.({ lengthComputable, loaded, total });
+  }
+  finish(status: number) {
+    this.status = status;
+    this.onload?.();
+  }
+}
+
+describe('uploadPhoto', () => {
+  it('posts the same form as postToS3 and reports progress up to done', async () => {
+    const xhr = new FakeXhr();
+    const seen: number[] = [];
+
+    const sending = uploadPhoto(presigned, photo, {
+      createXhr: () => xhr,
+      onProgress: (f) => seen.push(f),
+    });
+    xhr.progress(250, 1000);
+    xhr.progress(1000, 1000);
+    xhr.finish(204);
+    await sending;
+
+    expect(xhr.opened).toEqual([['POST', presigned.url]]);
+    const names = [...xhr.body!.entries()].map(([name]) => name);
+    expect(names).toEqual([...Object.keys(presigned.fields), 'file']);
+    expect(seen).toEqual([0.25, 1, 1]);
+  });
+
+  it('ignores progress that cannot be measured and never goes past 1', async () => {
+    const xhr = new FakeXhr();
+    const seen: number[] = [];
+    const sending = uploadPhoto(presigned, photo, {
+      createXhr: () => xhr,
+      onProgress: (f) => seen.push(f),
+    });
+    xhr.progress(10, 0, false);
+    xhr.progress(5000, 1000);
+    xhr.finish(204);
+    await sending;
+    expect(seen).toEqual([1, 1]);
+  });
+
+  it('refuses a photo over the limit without sending it', async () => {
+    const xhr = new FakeXhr();
+    await expect(
+      uploadPhoto({ ...presigned, maxBytes: 500 }, photo, { createXhr: () => xhr }),
+    ).rejects.toThrow(/too large/);
+    expect(xhr.body).toBeUndefined();
+  });
+
+  it('explains an expired link and a failed save in the same words as postToS3', async () => {
+    for (const [status, message] of [
+      [403, /link ran out/],
+      [500, /error 500/],
+    ] as const) {
+      const xhr = new FakeXhr();
+      const sending = uploadPhoto(presigned, photo, { createXhr: () => xhr });
+      xhr.finish(status);
+      await expect(sending).rejects.toThrow(message);
+      await expect(sending).rejects.toBeInstanceOf(PhotoUploadError);
+    }
+  });
+
+  it('tries once more with a plain request when the progress request gets no answer', async () => {
+    const xhr = new FakeXhr();
+    const fetchFn = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    const seen: number[] = [];
+
+    const sending = uploadPhoto(presigned, photo, {
+      createXhr: () => xhr,
+      fetchFn,
+      onProgress: (f) => seen.push(f),
+    });
+    xhr.onerror?.();
+    await sending;
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([1]);
+  });
+
+  it('says the connection is down when the plain request fails too', async () => {
+    const xhr = new FakeXhr();
+    const fetchFn = vi.fn<typeof fetch>(async () => {
+      throw new TypeError('offline');
+    });
+    const sending = uploadPhoto(presigned, photo, { createXhr: () => xhr, fetchFn });
+    xhr.ontimeout?.();
+    await expect(sending).rejects.toThrow(/Check your connection/);
+  });
+
+  it('does not try again with fetch when S3 answered with an error', async () => {
+    const xhr = new FakeXhr();
+    const fetchFn = vi.fn<typeof fetch>();
+    const sending = uploadPhoto(presigned, photo, { createXhr: () => xhr, fetchFn });
+    xhr.finish(403);
+    await expect(sending).rejects.toThrow(/link ran out/);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('can be cancelled', async () => {
+    const xhr = new FakeXhr();
+    const controller = new AbortController();
+    const sending = uploadPhoto(presigned, photo, {
+      createXhr: () => xhr,
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(sending).rejects.toThrow(/cancelled/);
+    expect(xhr.aborted).toBe(true);
   });
 });

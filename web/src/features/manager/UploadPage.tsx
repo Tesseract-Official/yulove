@@ -1,18 +1,44 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { ExamBoardResponse } from '@yulove/shared';
 import { errorMessage } from '../../api/errors.js';
+import { useCurrentUser } from '../../session/MeContext.js';
 import { ErrorState, Loading } from '../../ui/states.js';
 import { useBoard } from '../common/hooks.js';
 import { BatchSelect, ExamSelect } from '../common/pickers.js';
 import { Notice, PageHeader } from '../common/ui.js';
 import { StudentPicker } from './StudentPicker.js';
-import { StudentUpload } from './StudentUpload.js';
+import { UploadScreen } from './UploadScreen.js';
+import { UploadStatusList } from './UploadStatus.js';
 
-/** The student after `email` in the list who is not absent. */
-function followingStudent(board: ExamBoardResponse, email: string) {
-  const index = board.students.findIndex((s) => s.email === email);
-  return board.students.slice(index + 1).find((s) => !s.absent);
+/** What is remembered between visits: where the manager left off. */
+interface LastUpload {
+  batch: string;
+  exam: string;
+  student: string;
+}
+
+const storageKey = (email: string) => `yulove.upload.last:${email.toLowerCase()}`;
+
+/** Browser storage can be missing or refused (private windows), so every use is guarded. */
+function readLast(email: string): LastUpload | undefined {
+  try {
+    const raw = window.localStorage.getItem(storageKey(email));
+    if (!raw) return undefined;
+    const value = JSON.parse(raw) as Partial<LastUpload>;
+    return typeof value.batch === 'string' && typeof value.exam === 'string'
+      ? { batch: value.batch, exam: value.exam, student: value.student ?? '' }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLast(email: string, last: LastUpload): void {
+  try {
+    window.localStorage.setItem(storageKey(email), JSON.stringify(last));
+  } catch {
+    // Nothing to do: the choice is simply not remembered.
+  }
 }
 
 function ExamWork({
@@ -37,15 +63,14 @@ function ExamWork({
     );
   }
 
-  const student = board.data.students.find((s) => s.email === studentEmail);
-  if (student) {
+  if (board.data.students.some((s) => s.email === studentEmail)) {
     return (
-      <StudentUpload
-        key={student.email}
+      <UploadScreen
+        key={examId}
         examId={examId}
-        student={student}
-        nextStudent={followingStudent(board.data, student.email)}
-        onPickStudent={(email) => select({ student: email })}
+        board={board.data}
+        studentEmail={studentEmail}
+        onStudentChange={(email) => select({ student: email })}
         onChooseAnother={() => select({ student: '' })}
       />
     );
@@ -57,15 +82,18 @@ function ExamWork({
         <Notice kind="warning">That student is not in this exam. Choose another student.</Notice>
       ) : null}
       <StudentPicker board={board.data} onPick={(email) => select({ student: email })} />
+      <UploadStatusList />
     </>
   );
 }
 
 /**
- * Batch manager: batch → exam → student → question → photo. The choices are kept in the address
- * (?batch=&exam=&student=), so reloading the page keeps the place.
+ * Batch manager: pick the exam and student, then take, adjust and send each answer photo on one
+ * screen (UploadScreen). The choices are kept in the address (?batch=&exam=&student=), so reloading
+ * keeps the place, and the last exam and student are remembered for the next visit.
  */
 export function UploadPage() {
+  const me = useCurrentUser();
   const [params, setParams] = useSearchParams();
   const batchId = params.get('batch') ?? '';
   const examId = params.get('exam') ?? '';
@@ -91,13 +119,33 @@ export function UploadPage() {
     [select, batchId],
   );
 
+  // Coming back with nothing chosen: go back to where the manager left off.
+  const arrivedEmpty = !batchId && !examId && !studentEmail;
+  useEffect(() => {
+    if (!arrivedEmpty) return;
+    const last = readLast(me.email);
+    if (last?.exam) select({ batch: last.batch, exam: last.exam, student: last.student });
+  }, [arrivedEmpty, me.email, select]);
+
+  // Remember the exam, and the last student that was chosen for it.
+  useEffect(() => {
+    if (!examId) return;
+    const previous = readLast(me.email);
+    const keepStudent = previous?.exam === examId ? previous.student : '';
+    writeLast(me.email, { batch: batchId, exam: examId, student: studentEmail || keepStudent });
+  }, [me.email, batchId, examId, studentEmail]);
+
+  const working = Boolean(examId && studentEmail);
+
   return (
-    <section className="page">
-      <PageHeader
-        title="Upload answers"
-        intro="Choose the exam, then the student, then photograph each answer page."
-        backTo="/manager"
-      />
+    <section className={working ? 'page capture-page' : 'page'}>
+      {working ? null : (
+        <PageHeader
+          title="Upload answers"
+          intro="Choose the exam, then the student, then photograph each answer page."
+          backTo="/manager"
+        />
+      )}
 
       {!studentEmail ? (
         <div className="form">

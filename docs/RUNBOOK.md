@@ -15,6 +15,7 @@ Two rules before anything else:
 4. [Start of a semester](#4-start-of-a-semester)
 5. [A normal week: teachers](#5-a-normal-week-teachers)
 6. [A normal week: batch managers](#6-a-normal-week-batch-managers)
+   - [Taking answer photos](#taking-answer-photos)
 7. [What students see, and appeals](#7-what-students-see-and-appeals)
 8. [Overriding a score, and the audit log](#8-overriding-a-score-and-the-audit-log)
 9. [Answers that could not be graded](#9-answers-that-could-not-be-graded)
@@ -177,13 +178,14 @@ After the exam, **Results** shows every student's score per question and in tota
 ## 6. A normal week: batch managers
 
 1. **Before the exam**: nothing, apart from making sure the students are added (section 4) and the exam's PDF exists.
-2. **After the exam**, open **Upload answers**:
-   1. Choose the batch and the exam.
-   2. Search for a student by roll number, name or email and pick them.
-   3. Pick a question number.
-   4. Press **Take a photo** (on a phone) or **Choose a file**.
-   5. Crop to the answer, turn the picture if needed, and press **Send for grading**. The app shrinks the photo and sends it.
-   6. Move on to the next question, or press **Choose another student**. To replace a photo, upload the same question again (**Replace photo**, then **Replace and grade again**); the old one is kept as an older version.
+2. **After the exam**, open **Upload answers**. Everything from the camera to Send is on one screen:
+   1. Choose the batch and the exam, then the student (search by roll number, name or email). The app remembers the last exam and student for next time.
+   2. The top of the screen shows the student and the question, with **‹ ›** buttons for the previous or next question and student (students who are absent are skipped), and a row such as **Q1 ✓ Q2 ✓ Q3 •** showing which questions have a photo. Tap a question in the row to go to it.
+   3. Press **Take a photo** (it opens the phone's camera) or **Choose from gallery**.
+   4. Adjust the photo on the same screen: drag the corners and edges of the white box so it frames just the answer page (it starts on the page edges when the app can find them; **Whole photo** puts it back to the full picture). Pinch to zoom, or use **+**, **−** and **Fit**; drag the photo to move it; **↺ ↻** turn it a quarter; **Retake** starts again. Press **Next**.
+   5. Look at the preview, which is exactly what will be sent, and press **Send**. The photo goes up in the background with a progress bar, and the camera opens for the next question straight away. After the last question you arrive at the next student who is not absent and still has questions without a photo.
+   6. A photo that cannot be sent stays on the screen with the reason and a **Retry** chip (**Retry all** if there are several). It is never thrown away unless you press **Discard**. Unsent photos live only in this open page, so keep it open until the row shows ✓ for everything; if you close or reload the page while photos are unsent, the browser asks first. You can move to other pages in the app and the photos keep going up; a yellow or red bar tells you if any are still unsent.
+   7. To replace a photo, tap that question in the row and take a new one. The old one is kept as an older version. **Choose another student** goes back to the list.
 3. **Students who were absent**: mark them absent from the same student picker. An absent student scores zero everywhere and shows "Absent"; uploads for them are blocked until you unmark them.
 4. **Check grading and publish**: this is the status board. It lists every student and every question with a status (not submitted, queued, being read, being graded, graded, or could not be graded). Press **Refresh** to update it; it does not refresh itself. A big batch takes a while, since photos are read a few at a time. From the board you can:
    - open an answer to see the photo, what Gemini read and the tests that failed;
@@ -193,7 +195,18 @@ After the exam, **Results** shows every student's score per question and in tota
 
 Grading again after publishing is fine: the student's calculated score is replaced by the new one (a score a teacher or founder set by hand stays until they remove it; see section 8).
 
-**Batch managers do not see appeals.** Appeals are handled by the batch's teachers. If a student tells you they have appealed, ask them to wait for their teacher; if the teacher asks for a better photo, upload it from **Upload answers** (use **Replace photo**, then **Replace and grade again**).
+**Batch managers do not see appeals.** Appeals are handled by the batch's teachers. If a student tells you they have appealed, ask them to wait for their teacher; if the teacher asks for a better photo, upload it from **Upload answers** (tap that question in the row, take the new photo and press **Send and replace**).
+
+### Taking answer photos
+
+Gemini can only grade what it can read, and a poor photo is the most common reason for a wrong mark or an appeal. A few seconds per photo saves a lot of re-grading:
+
+- **One page, flat, filling the frame.** Lay the page flat and hold the phone straight above it, so the lines of writing run straight across. Let the page fill the screen so the writing is big.
+- **Good, even light.** Use daylight or a bright room. Keep your own and the phone's shadow off the page, and switch the flash off (it makes a glare patch).
+- **Hold still and let it focus.** Tap the page on the camera screen to focus, then take the photo. Blurry words cannot be read, however good the crop.
+- **Check the preview before Send.** Can you read every line, with nothing cut off at the edges or bottom? If not, press **Back to adjust** to fix the box, or **Retake**.
+- **Crop to the answer, but keep all of it.** Cut away the table and other pages, and keep every line of the code, including anything written in the margin.
+- **Sideways is fine.** Phone photos are turned upright by themselves; if one is not, use **↺ ↻**. Before you leave the page, check that every question shows ✓ and no photo has a red **Retry**.
 
 ## 7. What students see, and appeals
 
@@ -204,7 +217,7 @@ After publishing, a student opens **Your results**, picks the exam and sees for 
 - "Still being graded", "No answer was submitted", "Absent";
 - "Score adjusted by teacher" (a teacher set it by hand). When a founder changes a score the student sees only the new score and no label at all.
 
-Under each answered question the student also sees **their own photo, exactly as it was sent for grading** (after cropping and turning), from the latest upload. Tapping it opens it full screen, where two fingers zoom and one finger drags (a laptop has **Zoom in** and **Zoom out** buttons). The photo is only shown after you publish, only to the student who wrote the answer, and the link behind it works for **5 minutes** and is made fresh each time: if a student leaves the page open for a long time it fetches a new link by itself, or they can press **Try again**. If you replace a photo (**Replace photo**), the student sees the new one once the answer is graded again. Note that a replaced photo is shown as soon as it is uploaded, a few seconds before **Replace and grade again** finishes.
+Under each answered question the student also sees **their own photo, exactly as it was sent for grading** (after cropping and turning), from the latest upload. Tapping it opens it full screen, where two fingers zoom and one finger drags (a laptop has **Zoom in** and **Zoom out** buttons). The photo is only shown after you publish, only to the student who wrote the answer, and the link behind it works for **5 minutes** and is made fresh each time: if a student leaves the page open for a long time it fetches a new link by itself, or they can press **Try again**. If you replace a photo (**Send and replace**), the student sees the new one once the answer is graded again. Note that a replaced photo is shown as soon as it is uploaded, a few seconds before it has been sent for grading again.
 
 Students never see the code that was read, another student's photo, or who handled their appeal.
 
